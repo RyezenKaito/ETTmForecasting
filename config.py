@@ -25,44 +25,42 @@ TRAIN_RATIO = 0.6
 VAL_RATIO   = 0.2
 # TEST_RATIO is implicitly 1 - TRAIN_RATIO - VAL_RATIO = 0.2
 
-# STL & Winsorization
-STL_PERIOD  = 96               # 96 × 15 min = 1 day
-
 # Columns to drop (high correlation)
 DROP_COLS = ["MUFL", "MULL"]
 
 # Feature count after preprocessing (with DROP_COLS applied):
 # Raw cols: HUFL, HULL, LUFL, LULL, OT               → 5
-# + trend, seasonal, residual (from STL on OT)        → +3
 # + time_sin, time_cos                                → +2
-# Total                                               → 10
-N_FEATURES  = 10
+# Total                                               → 7
+N_FEATURES  = 7
+
+# Decoder input dim for Seq2Seq (autoregressive: [OT, sin, cos])
+S2S_DEC_IN_DIM = 3
 
 # ─── Seq2Seq Hyperparameters ───────────────────────────────────────────────────
-S2S_HIDDEN_SIZE = 64           # Reduced from 128 to combat overfitting
+S2S_HIDDEN_SIZE = 128          # Increased from 64 for better capacity
 S2S_NUM_LAYERS  = 2
-S2S_DROPOUT     = 0.5          # Increased from 0.3 for stronger regularization
-S2S_LR          = 5e-4         # Slower LR for more stable convergence
-S2S_WEIGHT_DECAY= 1e-3         # Increased from 1e-4 for stronger L2 regularization
-S2S_EPOCHS      = 80
+S2S_DROPOUT     = 0.3          # Reduced from 0.5 — less aggressive
+S2S_LR          = 3e-4         # Slightly lower for stability
+S2S_WEIGHT_DECAY= 1e-4         # Light L2 regularization
+S2S_EPOCHS      = 100
 S2S_BATCH_SIZE  = 64
-S2S_PATIENCE    = 5            # More patience to allow convergence
+S2S_PATIENCE    = 7            # More patience to allow convergence
 S2S_CKPT        = os.path.join(CKPT_DIR, "seq2seq_best.pth")
 
 # ─── Informer Hyperparameters ─────────────────────────────────────────────────
-# Decoder only sees OT, sin, cos
-DEC_IN_DIM   = 3
-
-INF_ENC_IN   = N_FEATURES      # 9
-INF_DEC_IN   = DEC_IN_DIM      # 3
+# IMPORTANT: dec_in = enc_in = N_FEATURES (matches the original paper)
+# Decoder receives ALL features; the future portion is zero-padded (no leakage).
+INF_ENC_IN   = N_FEATURES      # 7
+INF_DEC_IN   = N_FEATURES      # 7 (same as enc_in — per original paper)
 INF_C_OUT    = 1               # Output features (MS mode: predict only OT)
-INF_D_MODEL  = 64              # Reduced from 128 to combat overfitting
-INF_N_HEADS  = 2               # Reduced from 4
-INF_E_LAYERS = 1               # Reduced from 2
+INF_D_MODEL  = 256             # Increased from 64 (paper uses 512, 256 is balanced)
+INF_N_HEADS  = 4               # Increased from 2 (minimum for effective attention)
+INF_E_LAYERS = 2               # Increased from 1 (need ≥2 for distilling to work)
 INF_D_LAYERS = 1
-INF_D_FF     = 128             # Reduced from 512
-INF_FACTOR   = 3               # ProbSparse attention factor
-INF_DROPOUT  = 0.5             # Increased from 0.3 — stronger regularization
+INF_D_FF     = 1024            # = 4 × d_model (standard Transformer ratio)
+INF_FACTOR   = 5               # ProbSparse attention factor (paper default)
+INF_DROPOUT  = 0.05            # Reduced from 0.5 — paper uses 0.05
 INF_ATTN     = "prob"          # "prob" = ProbSparse, "full" = vanilla
 INF_EMBED    = "timeF"         # Time-feature embedding
 INF_FREQ     = "t"             # minutely (15min)
@@ -71,9 +69,9 @@ INF_OUTPUT_ATTENTION = False
 INF_DISTIL   = True
 INF_MIX      = True
 INF_PADDING  = 0
-INF_LR       = 5e-5            # Halved from 1e-4 — slower, more stable
-INF_WEIGHT_DECAY = 1e-3        # Increased from 1e-4 — stronger L2 regularization
-INF_EPOCHS   = 30              # Increased from 10 — more room to converge
-INF_BATCH_SIZE = 64            # Increased from 32 — smoother gradients
-INF_PATIENCE = 5               # Increased from 3 — less aggressive early stop
+INF_LR       = 1e-4            # Paper default
+INF_WEIGHT_DECAY = 1e-5        # Light L2 regularization (paper uses 0)
+INF_EPOCHS   = 50              # More room to converge
+INF_BATCH_SIZE = 32            # Smaller batch for noisier but more frequent updates
+INF_PATIENCE = 7               # Less aggressive early stopping
 INF_CKPT     = os.path.join(CKPT_DIR, "informer_best.pth")

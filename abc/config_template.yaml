@@ -1,0 +1,221 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONFIG TEMPLATE - BỘ 3 MODEL TỐI ƯU
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Data Configuration
+data:
+  train_file: "data/ETTm1.csv"
+  test_file: "data/test1.xlsx"
+  label_file: "data/label.xlsx"
+  target_column: "OT"
+  date_column: "date"
+  
+  # Feature columns to use (set to null to use all)
+  feature_columns: null  # Auto-detect, or specify: [HUFL, HULL, LUFL, LULL, OT]
+  
+  # Train/Val/Test split
+  train_ratio: 0.6
+  val_ratio: 0.2
+  test_ratio: 0.2
+
+# Time Series Parameters
+timeseries:
+  seq_len: 336          # Input sequence length (14 days for 15-min data)
+  label_len: 48         # History length (2 days)
+  pred_len: 24          # Prediction length (1 day)
+  
+  # STL Decomposition
+  stl:
+    period: 96          # Seasonal period (24 hours * 4 samples/hour)
+    seasonal: 'periodic'
+    trend: 'centered'
+  
+  # Time features
+  add_time_features: true
+  time_features: [time_sin, time_cos, day_sin, day_cos]
+
+# Training Configuration
+training:
+  device: "cuda"        # cuda or cpu
+  random_seed: 42
+  
+  batch_size: 32
+  epochs: 150
+  early_stopping_patience: 15
+  
+  # Optimization
+  optimizer: "AdamW"
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-3
+  
+  # Learning rate schedule
+  lr_schedule: "cosine"  # cosine, exponential, step, none
+  lr_schedule_params:
+    T_max: 150
+    eta_min: 1.0e-6
+  
+  # Regularization
+  dropout: 0.2
+  noise_std: 0.01       # MC Dropout noise for uncertainty
+  gradient_clip: 1.0
+  
+  # Validation
+  validation_frequency: 1  # Every N epochs
+  save_best_only: true
+
+# Model Configurations
+models:
+  # Transformer
+  transformer:
+    enabled: true
+    d_model: 64
+    nhead: 4
+    num_layers: 3
+    dim_feedforward: 256
+    dropout: 0.2
+    checkpoint: "models/best_transformer.pth"
+    learning_rate: 1.0e-3
+  
+  # GRU Encoder-Decoder
+  gru_seq2seq:
+    enabled: true
+    hidden_dim: 128
+    num_layers: 2
+    dropout: 0.2
+    attention_heads: 4
+    checkpoint: "models/best_gru_s2s.pth"
+    learning_rate: 1.0e-3
+  
+  # Improved TCN
+  improved_tcn:
+    enabled: true
+    num_channels: [32, 64, 128, 128, 256]
+    kernel_size: 7
+    dropout: 0.3
+    dilation_base: 2     # Dilation = 2^i
+    checkpoint: "models/best_improved_tcn.pth"
+    learning_rate: 5.0e-4
+
+# Ensemble Configuration
+ensemble:
+  method: "averaging"    # averaging, weighted_averaging, stacking
+  weights: null          # null=equal, or [0.4, 0.3, 0.3]
+  
+  # For stacking method
+  meta_model:
+    layers: [128, 64, 32]
+    activation: "relu"
+    dropout: 0.2
+
+# Inference Configuration
+inference:
+  # Uncertainty estimation
+  monte_carlo_runs: 30
+  confidence_level: 0.95  # 95% confidence interval
+  
+  # Batch inference
+  batch_size: 32
+  
+  # Preprocessing
+  use_scaler: true
+  scaler_path: "models/scaler.pkl"
+
+# Post-processing
+postprocessing:
+  # Outlier removal
+  remove_outliers: false
+  outlier_threshold: 3.0  # Standard deviations
+  
+  # Smoothing
+  apply_smoothing: false
+  smoothing_window: 3
+  smoothing_method: "mean"  # mean, median, exponential
+  
+  # Clipping
+  clip_predictions: false
+  clip_min: null
+  clip_max: null
+
+# Logging & Monitoring
+logging:
+  level: "INFO"
+  log_file: "logs/training.log"
+  tensorboard: false
+  tensorboard_dir: "runs/"
+  
+  # Metrics to track
+  metrics:
+    - "MSE"
+    - "RMSE"
+    - "MAE"
+    - "sMAPE"
+  
+  # Frequency of logging
+  log_frequency: 10  # Every N batches
+
+# Output Configuration
+output:
+  save_dir: "outputs/"
+  save_models: true
+  save_plots: true
+  save_metrics: true
+  
+  # Plot generation
+  plots:
+    learning_curves: true
+    predictions: true
+    metrics_comparison: true
+    residual_analysis: true
+    uncertainty_bands: true
+  
+  # File formats
+  format:
+    metrics: "csv"
+    predictions: "csv"
+    model: "pth"
+
+# Advanced Options
+advanced:
+  # Knowledge distillation
+  knowledge_distillation:
+    enabled: false
+    teacher_model: "transformer"
+    student_hidden_dim: 128
+    temperature: 3.0
+    alpha: 0.7  # Weight for soft loss
+  
+  # Model quantization
+  quantization:
+    enabled: false
+    dtype: "int8"
+  
+  # Hyperparameter optimization (Optuna)
+  hyperparameter_optimization:
+    enabled: false
+    n_trials: 100
+    pruner: "median"
+    sampler: "tpe"
+  
+  # Multi-GPU training
+  distributed_training:
+    enabled: false
+    backend: "nccl"
+    num_gpus: 1
+
+# Data Leakage Prevention (CRITICAL)
+leakage_prevention:
+  # Ensure scaler fit only on train
+  scaler_fit_on_train_only: true
+  
+  # Ensure STL pattern extracted from train only
+  stl_fit_on_train_only: true
+  
+  # Do not use future target values in features
+  no_future_target_in_features: true
+  
+  # Do not use test set statistics for preprocessing
+  no_test_info_in_preprocessing: true
+  
+  # Verification
+  verify_leakage: true
+  leakage_check_frequency: "after_preprocessing"

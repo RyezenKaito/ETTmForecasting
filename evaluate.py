@@ -14,9 +14,9 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 
 import config as cfg
-from src.data.preprocessing import build_pipeline, load_and_split
-from src.data.preprocessing import (fit_stl, apply_stl_features, add_time_features,
-                                     compute_clip_bounds, winsorize, fit_scaler, scale)
+from src.data.preprocessing import (
+    load_and_split, add_time_features, fit_scaler, scale
+)
 from src.data.dataset import TimeSeriesDataset4Seq, ETTDatasetInformer
 from src.models.seq2seq import Seq2SeqLSTM
 from src.models.informer import Informer
@@ -44,11 +44,11 @@ def evaluate_seq2seq(test_scaled, scaler, target_idx, device):
         hidden_size = cfg.S2S_HIDDEN_SIZE,
         num_layers  = cfg.S2S_NUM_LAYERS,
         dropout     = cfg.S2S_DROPOUT,
-        dec_in_dim  = cfg.DEC_IN_DIM,
+        dec_in_dim  = cfg.S2S_DEC_IN_DIM,
         pred_len    = cfg.PRED_LEN,
         target_idx  = target_idx,
     ).to(device)
-    model.load_state_dict(torch.load(cfg.S2S_CKPT, map_location=device))
+    model.load_state_dict(torch.load(cfg.S2S_CKPT, map_location=device, weights_only=True))
     model.eval()
 
     preds, trues = [], []
@@ -72,7 +72,7 @@ def evaluate_seq2seq(test_scaled, scaler, target_idx, device):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Evaluate Informer
+# Evaluate Informer  (decoder receives ALL features — per original paper)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def evaluate_informer(test_scaled, test_index, scaler, target_idx, device):
@@ -104,28 +104,24 @@ def evaluate_informer(test_scaled, test_index, scaler, target_idx, device):
         mix       = cfg.INF_MIX,
         device    = device,
     ).float().to(device)
-    model.load_state_dict(torch.load(cfg.INF_CKPT, map_location=device))
+    model.load_state_dict(torch.load(cfg.INF_CKPT, map_location=device, weights_only=True))
     model.eval()
 
     preds, trues = [], []
     with torch.no_grad():
         for enc_x, dec_y, enc_mark, dec_mark in test_loader:
-            enc_x      = enc_x.float().to(device)
-            dec_y_f    = dec_y.float()
-            enc_mark   = enc_mark.float().to(device)
-            dec_mark   = dec_mark.float().to(device)
+            enc_x    = enc_x.float().to(device)
+            dec_y_f  = dec_y.float()
+            enc_mark = enc_mark.float().to(device)
+            dec_mark = dec_mark.float().to(device)
 
-            # Subset features for Decoder: [OT, time_sin, time_cos]
-            batch_y_dec = dec_y_f[:, :, [target_idx, -2, -1]]
+            n_features = dec_y_f.shape[-1]
 
-            # Decoder input: [label_len history | zero padding]
-            pred_pad = torch.zeros([batch_y_dec.shape[0], cfg.PRED_LEN, 3]).float()
-            # Inject future sin/cos (indices 1 and 2 in the 3-feature subset)
-            pred_pad[:, :, 1:3] = batch_y_dec[:, -cfg.PRED_LEN:, 1:3]
-            
-            dec_inp = torch.cat([batch_y_dec[:, :cfg.LABEL_LEN, :], pred_pad], dim=1).float().to(device)
+            # Decoder input: [label_len history ALL features | pred_len ZEROS ALL features]
+            pred_pad = torch.zeros([dec_y_f.shape[0], cfg.PRED_LEN, n_features]).float()
+            dec_inp  = torch.cat([dec_y_f[:, :cfg.LABEL_LEN, :], pred_pad], dim=1).float().to(device)
 
-            out = model(enc_x, enc_mark, dec_inp, dec_mark)  # (B, pred_len, 1)
+            out = model(enc_x, enc_mark, dec_inp, dec_mark)   # (B, pred_len, 1)
             gt  = dec_y_f[:, -cfg.PRED_LEN:, target_idx:target_idx+1]
 
             preds.append(inverse(out.squeeze(-1).cpu().numpy(), scaler, target_idx))
@@ -144,38 +140,33 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # ── Rebuild test set (same pipeline as training) ──────────────────────────
+    # ── Rebuild test set (same pipeline as training — no STL, no Winsorization) ──
     train_df, val_df, test_df = load_and_split(cfg.DATA_PATH, cfg.TRAIN_RATIO, cfg.VAL_RATIO)
 
     # Drop correlated columns
     if hasattr(cfg, 'DROP_COLS') and cfg.DROP_COLS:
-        for split_df_name in ['train_df', 'val_df', 'test_df']:
-            pass  # we reassign below
         train_df = train_df.drop(columns=cfg.DROP_COLS, errors='ignore')
         val_df   = val_df.drop(columns=cfg.DROP_COLS, errors='ignore')
         test_df  = test_df.drop(columns=cfg.DROP_COLS, errors='ignore')
 
-    _, seasonal_pattern = fit_stl(train_df, cfg.TARGET_COL, cfg.STL_PERIOD)
-    train_df = apply_stl_features(train_df, seasonal_pattern, cfg.TARGET_COL, cfg.STL_PERIOD)
-    val_df   = apply_stl_features(val_df,   seasonal_pattern, cfg.TARGET_COL, cfg.STL_PERIOD)
-    test_df  = apply_stl_features(test_df,  seasonal_pattern, cfg.TARGET_COL, cfg.STL_PERIOD)
-
+    # Time features
     train_df = add_time_features(train_df)
     val_df   = add_time_features(val_df)
     test_df  = add_time_features(test_df)
 
-    bounds   = compute_clip_bounds(train_df)
-    train_df = winsorize(train_df, bounds)
-    val_df   = winsorize(val_df,   bounds)
-    test_df  = winsorize(test_df,  bounds)
-
+    # Scale
     scaler       = fit_scaler(train_df)
     test_scaled  = scale(test_df, scaler)
     col_names    = list(train_df.columns)
     target_idx   = col_names.index(cfg.TARGET_COL)
     test_index   = test_df.index
 
+    print(f"  Columns ({len(col_names)}): {col_names}")
+    print(f"  Target '{cfg.TARGET_COL}' at index {target_idx}")
+    print(f"  Test shape: {test_scaled.shape}")
+
     results = {}
+    s2s_preds = s2s_trues = inf_preds = inf_trues = None
 
     # ── Seq2Seq ───────────────────────────────────────────────────────────────
     if os.path.exists(cfg.S2S_CKPT):
@@ -194,35 +185,46 @@ def main():
         print(f"Informer checkpoint not found: {cfg.INF_CKPT}")
 
     # ── Print comparison table ─────────────────────────────────────────────────
-    print("\n" + "=" * 55)
-    print(f"{'Model':<12} {'MAE':>8} {'RMSE':>8} {'MAPE':>8} {'MSE':>10}")
-    print("-" * 55)
-    for name, m in results.items():
-        print(f"{name:<12} {m['MAE']:>8.4f} {m['RMSE']:>8.4f} {m['MAPE']:>7.2f}% {m['MSE']:>10.4f}")
-    print("=" * 55)
+    if results:
+        print(f"\n{'='*55}")
+        print(f"{'Model':<12} {'MAE':>8} {'RMSE':>8} {'MAPE':>8} {'MSE':>10}")
+        print("-" * 55)
+        for name, m in results.items():
+            print(f"{name:<12} {m['MAE']:>8.4f} {m['RMSE']:>8.4f} {m['MAPE']:>7.2f}% {m['MSE']:>10.4f}")
+        print("=" * 55)
 
     # ── Plot first 3 × pred_len steps ─────────────────────────────────────────
-    os.makedirs(cfg.RESULT_DIR, exist_ok=True)
-    n_show = cfg.PRED_LEN * 3
+    if results:
+        os.makedirs(cfg.RESULT_DIR, exist_ok=True)
+        n_show = cfg.PRED_LEN * 3
 
-    fig, axes = plt.subplots(len(results), 1, figsize=(12, 4 * len(results)))
-    if len(results) == 1:
-        axes = [axes]
+        fig, axes = plt.subplots(len(results), 1, figsize=(14, 4 * len(results)))
+        if len(results) == 1:
+            axes = [axes]
 
-    for ax, (name, _) in zip(axes, results.items()):
-        preds_show = s2s_preds[:n_show, 0] if name == "Seq2Seq" else inf_preds[:n_show, 0]
-        trues_show = s2s_trues[:n_show, 0] if name == "Seq2Seq" else inf_trues[:n_show, 0]
-        ax.plot(trues_show, label="Ground Truth", linewidth=1)
-        ax.plot(preds_show, label=f"{name} Prediction", linewidth=1, linestyle="--")
-        ax.set_title(f"{name} — first {n_show} prediction steps")
-        ax.legend()
-        ax.grid(True)
+        for ax, (name, _) in zip(axes, results.items()):
+            if name == "Seq2Seq" and s2s_preds is not None:
+                preds_show = s2s_preds[:n_show, 0] if s2s_preds.ndim > 1 else s2s_preds[:n_show]
+                trues_show = s2s_trues[:n_show, 0] if s2s_trues.ndim > 1 else s2s_trues[:n_show]
+            elif name == "Informer" and inf_preds is not None:
+                preds_show = inf_preds[:n_show, 0] if inf_preds.ndim > 1 else inf_preds[:n_show]
+                trues_show = inf_trues[:n_show, 0] if inf_trues.ndim > 1 else inf_trues[:n_show]
+            else:
+                continue
 
-    plt.tight_layout()
-    save_path = os.path.join(cfg.RESULT_DIR, "comparison_plot.png")
-    plt.savefig(save_path, dpi=150)
-    plt.show()
-    print(f"\nPlot saved to: {save_path}")
+            ax.plot(trues_show, label="Ground Truth", linewidth=1.2, color="#2196F3")
+            ax.plot(preds_show, label=f"{name} Prediction", linewidth=1.2, linestyle="--", color="#FF5722")
+            ax.set_title(f"{name} — first {n_show} prediction steps (original scale)")
+            ax.set_xlabel("Time Step")
+            ax.set_ylabel("OT (°C)")
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        save_path = os.path.join(cfg.RESULT_DIR, "comparison_plot.png")
+        plt.savefig(save_path, dpi=150)
+        plt.show()
+        print(f"\nPlot saved to: {save_path}")
 
 
 if __name__ == "__main__":

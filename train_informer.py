@@ -1,6 +1,10 @@
 """
 train_informer.py — Train the Informer model on ETTm1 (MS mode).
 
+Decoder input follows the original Informer2020 paper:
+  dec_inp = [label_len history ALL features | pred_len ZEROS ALL features]
+  → No data leakage: the future portion is entirely zero-padded.
+
 Usage:
     python train_informer.py
 """
@@ -15,7 +19,9 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 import config as cfg
-from src.data.preprocessing import build_pipeline, load_and_split
+from src.data.preprocessing import (
+    load_and_split, add_time_features, fit_scaler, scale
+)
 from src.data.dataset import ETTDatasetInformer
 from src.models.informer import Informer
 from src.utils.metrics import metric
@@ -23,49 +29,41 @@ from src.utils.tools import EarlyStopping, plot_history
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Build Informer datasets (need the original DatetimeIndex for time marks)
+# Build Informer datasets
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_informer_loaders(data_path, target_col, stl_period, train_ratio, val_ratio,
+def build_informer_loaders(data_path, target_col, train_ratio, val_ratio,
                             seq_len, label_len, pred_len, batch_size):
     """
-    Re-runs the preprocessing pipeline but also keeps the DatetimeIndex
-    needed to build time marks for the Informer embedding.
+    Preprocessing pipeline (simplified — no STL, no Winsorization):
+      1. Load & split  →  2. Drop cols  →  3. Add sin/cos  →  4. Scale
+    Returns loaders + scaler + target column index.
     """
-    from src.data.preprocessing import (
-        load_and_split, fit_stl, apply_stl_features, add_time_features,
-        compute_clip_bounds, winsorize, fit_scaler, scale
-    )
-
     train_df, val_df, test_df = load_and_split(data_path, train_ratio, val_ratio)
 
+    # Drop correlated columns
     if hasattr(cfg, "DROP_COLS") and cfg.DROP_COLS:
         train_df = train_df.drop(columns=cfg.DROP_COLS, errors="ignore")
         val_df   = val_df.drop(columns=cfg.DROP_COLS, errors="ignore")
         test_df  = test_df.drop(columns=cfg.DROP_COLS, errors="ignore")
 
-    _, seasonal_pattern = fit_stl(train_df, target_col, stl_period)
-
-    train_df = apply_stl_features(train_df, seasonal_pattern, target_col, stl_period)
-    val_df   = apply_stl_features(val_df,   seasonal_pattern, target_col, stl_period)
-    test_df  = apply_stl_features(test_df,  seasonal_pattern, target_col, stl_period)
-
+    # Time features (sin/cos — always appended as last 2 columns)
     train_df = add_time_features(train_df)
     val_df   = add_time_features(val_df)
     test_df  = add_time_features(test_df)
 
-    bounds    = compute_clip_bounds(train_df)
-    train_df  = winsorize(train_df, bounds)
-    val_df    = winsorize(val_df,   bounds)
-    test_df   = winsorize(test_df,  bounds)
-
-    scaler      = fit_scaler(train_df)
-    train_arr   = scale(train_df, scaler)
-    val_arr     = scale(val_df,   scaler)
-    test_arr    = scale(test_df,  scaler)
+    # Scale (fit on train only)
+    scaler    = fit_scaler(train_df)
+    train_arr = scale(train_df, scaler)
+    val_arr   = scale(val_df,   scaler)
+    test_arr  = scale(test_df,  scaler)
 
     col_names  = list(train_df.columns)
     target_idx = col_names.index(target_col)
+
+    print(f"  Columns ({len(col_names)}): {col_names}")
+    print(f"  Target '{target_col}' at index {target_idx}")
+    print(f"  Train {train_arr.shape} | Val {val_arr.shape} | Test {test_arr.shape}")
 
     # Build datasets (keep DatetimeIndex for time marks)
     train_ds = ETTDatasetInformer(train_arr, train_df.index, seq_len, label_len, pred_len)
@@ -80,35 +78,39 @@ def build_informer_loaders(data_path, target_col, stl_period, train_ratio, val_r
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Process one batch (MS mode: predict only the target column)
+# Process one batch  (MS mode — matches original Informer2020 paper)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def process_batch(model, batch_x, batch_y, batch_x_mark, batch_y_mark,
                   pred_len, label_len, target_idx, device, padding=0):
+    """
+    Construct encoder/decoder inputs per the original Informer2020 paper:
+      - Encoder:  batch_x  (all features)
+      - Decoder:  [label_len steps ALL features | pred_len steps ZEROS ALL features]
+      - Target:   batch_y[:, -pred_len:, target_idx]  (only OT)
+
+    No data leakage: the future prediction window is entirely zero-padded.
+    """
     batch_x      = batch_x.float().to(device)
     batch_y      = batch_y.float()
     batch_x_mark = batch_x_mark.float().to(device)
     batch_y_mark = batch_y_mark.float().to(device)
 
-    # Subset features for Decoder: [OT, time_sin, time_cos]
-    # This matches DEC_IN_DIM = 3
-    # OT is at target_idx, time_sin/cos are the last 2 columns (-2, -1)
-    batch_y_dec = batch_y[:, :, [target_idx, -2, -1]]
+    n_features = batch_y.shape[-1]  # = enc_in = dec_in = 7
 
-    # Decoder input: [label_len history | zero padding for pred_len]
+    # Zero-padding for the prediction horizon (ALL features)
     if padding == 0:
-        pred_pad = torch.zeros([batch_y_dec.shape[0], pred_len, 3]).float()
+        pred_pad = torch.zeros([batch_y.shape[0], pred_len, n_features]).float()
     else:
-        pred_pad = torch.ones([batch_y_dec.shape[0], pred_len, 3]).float()
+        pred_pad = torch.ones([batch_y.shape[0], pred_len, n_features]).float()
 
-    # Overwrite the known deterministic features in the padded future (sin=index 1, cos=index 2 in the 3-feature slice)
-    pred_pad[:, :, 1:3] = batch_y_dec[:, -pred_len:, 1:3]
+    # Decoder input: [label_len history | pred_len zeros]
+    dec_inp = torch.cat([batch_y[:, :label_len, :], pred_pad], dim=1).float().to(device)
 
-    dec_inp = torch.cat([batch_y_dec[:, :label_len, :], pred_pad], dim=1).float().to(device)
+    # Forward pass
+    outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)  # (B, pred_len, c_out=1)
 
-    outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)  # (B, pred_len, c_out)
-
-    # MS mode: take only the target column from the last pred_len steps of batch_y
+    # Ground truth: only the target column from the last pred_len steps
     ground_truth = batch_y[:, -pred_len:, target_idx:target_idx+1].to(device)
 
     return outputs, ground_truth   # both (B, pred_len, 1)
@@ -167,6 +169,43 @@ def train(model, train_loader, val_loader, optimizer, criterion,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Test (evaluate on test set with original-scale metrics)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test(model, test_loader, scaler, target_idx, pred_len, label_len, device):
+    """Run inference on the test set and compute metrics in original scale."""
+    model.eval()
+    preds, trues = [], []
+
+    with torch.no_grad():
+        for enc_x, dec_y, enc_mark, dec_mark in test_loader:
+            pred, true = process_batch(model, enc_x, dec_y, enc_mark, dec_mark,
+                                       pred_len, label_len, target_idx, device)
+            # Inverse transform to original scale
+            pred_np = pred.squeeze(-1).cpu().numpy()
+            true_np = true.squeeze(-1).cpu().numpy()
+            pred_inv = pred_np * scaler.scale_[target_idx] + scaler.mean_[target_idx]
+            true_inv = true_np * scaler.scale_[target_idx] + scaler.mean_[target_idx]
+            preds.append(pred_inv)
+            trues.append(true_inv)
+
+    preds = np.concatenate(preds, axis=0)
+    trues = np.concatenate(trues, axis=0)
+
+    results = metric(preds, trues)
+    print(f"\n{'='*55}")
+    print(f"  Informer Test Results (original scale)")
+    print(f"{'='*55}")
+    print(f"  MAE:  {results['MAE']:.4f}")
+    print(f"  MSE:  {results['MSE']:.4f}")
+    print(f"  RMSE: {results['RMSE']:.4f}")
+    print(f"  MAPE: {results['MAPE']:.2f}%")
+    print(f"{'='*55}")
+
+    return preds, trues, results
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -177,7 +216,7 @@ def main():
     # 1. Data
     print("Building Informer data loaders...")
     train_loader, val_loader, test_loader, scaler, target_idx = build_informer_loaders(
-        cfg.DATA_PATH, cfg.TARGET_COL, cfg.STL_PERIOD,
+        cfg.DATA_PATH, cfg.TARGET_COL,
         cfg.TRAIN_RATIO, cfg.VAL_RATIO,
         cfg.SEQ_LEN, cfg.LABEL_LEN, cfg.PRED_LEN, cfg.INF_BATCH_SIZE
     )
@@ -207,6 +246,11 @@ def main():
         device    = device,
     ).float().to(device)
 
+    total_params = sum(p.numel() for p in model.parameters())
+    train_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"  Total parameters:     {total_params:,}")
+    print(f"  Trainable parameters: {train_params:,}")
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.INF_LR,
                                    weight_decay=cfg.INF_WEIGHT_DECAY)
     criterion = nn.HuberLoss()
@@ -221,7 +265,13 @@ def main():
                     cfg.INF_EPOCHS, cfg.INF_PATIENCE, cfg.INF_CKPT,
                     scheduler=scheduler)
 
-    # 4. Plot
+    # 4. Test (load best checkpoint)
+    print("\nLoading best checkpoint for testing...")
+    model.load_state_dict(torch.load(cfg.INF_CKPT, map_location=device, weights_only=True))
+    preds, trues, results = test(model, test_loader, scaler, target_idx,
+                                  cfg.PRED_LEN, cfg.LABEL_LEN, device)
+
+    # 5. Plot training history
     os.makedirs(cfg.RESULT_DIR, exist_ok=True)
     plot_history(history, title="Informer Training Loss",
                  save_path=os.path.join(cfg.RESULT_DIR, "informer_loss.png"))
