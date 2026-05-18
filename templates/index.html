@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}ETTm1 Forecasting Demo – Tổng Quan{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <!-- Hero -->
+  <div class="hero fade-in">
+    <h1>ETTm1 Multi-step<br>Forecasting</h1>
+    <p>
+      Dự báo nhiệt độ điện áp (OT) 24 bước tiếp theo (~6 giờ tương lai)
+      trên dataset ETTm1, sử dụng 3 kiến trúc deep learning khác nhau.
+    </p>
+    <div class="hero-badges">
+      <span class="badge badge-blue">pred_len = 24</span>
+      <span class="badge badge-gray">seq_len = 336 (3.5 ngày)</span>
+      <span class="badge badge-gray">69,680 mẫu · 15 phút/mẫu</span>
+      <span class="badge badge-green">Device: {{ device }}</span>
+    </div>
+    <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap">
+      <a href="/results" class="btn btn-primary">📊 Xem Kết Quả</a>
+      <a href="/visualize" class="btn btn-ghost">🎯 Interactive Demo</a>
+    </div>
+  </div>
+
+  <!-- Dataset summary -->
+  <div class="section-header" style="margin-top:2rem">
+    <h2>Dataset: ETTm1</h2>
+    <div class="section-divider"></div>
+  </div>
+  <div class="grid-3" style="margin-bottom:2.5rem">
+    <div class="card fade-in">
+      <h3>📅 Khoảng thời gian</h3>
+      <p style="font-size:1.4rem;font-weight:700;color:var(--accent1)">69,680</p>
+      <p style="color:var(--text-muted);font-size:.88rem">mẫu · tần suất 15 phút</p>
+      <p style="color:var(--text-muted);font-size:.85rem;margin-top:.4rem">2016–07 → 2018–07 (24 tháng)</p>
+    </div>
+    <div class="card fade-in">
+      <h3>🔢 Features</h3>
+      <p style="font-size:1.4rem;font-weight:700;color:var(--accent2)">7 → 5</p>
+      <p style="color:var(--text-muted);font-size:.88rem">biến gốc → sau khi drop MUFL, MULL</p>
+      <p style="color:var(--text-muted);font-size:.85rem;margin-top:.4rem">Target: OT (nhiệt độ dầu biến thế)</p>
+    </div>
+    <div class="card fade-in">
+      <h3>✂️ Split 60/20/20</h3>
+      <p style="font-size:1.4rem;font-weight:700;color:var(--accent3)">41,808 / 13,936 / 13,936</p>
+      <p style="color:var(--text-muted);font-size:.88rem">train / val / test samples</p>
+    </div>
+  </div>
+
+  <!-- 3 Model cards -->
+  <div class="section-header">
+    <h2>Ba Mô Hình</h2>
+    <div class="section-divider"></div>
+  </div>
+  <div class="grid-3" style="margin-bottom:2.5rem">
+
+    <div class="card model-card-seq2seq fade-in">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <h3>LSTM Seq2Seq</h3>
+        <span class="badge badge-seq2seq">Baseline</span>
+      </div>
+      <p style="color:var(--text-muted);font-size:.87rem;margin:.6rem 0 1rem">
+        Encoder-Decoder LSTM đơn giản, không attention, teacher forcing cố định.
+      </p>
+      {% if metrics and 'seq2seq' in metrics %}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+        <div><span style="color:var(--text-muted);font-size:.78rem">MSE</span>
+          <p style="font-weight:700;color:var(--accent1)">{{ "%.4f"|format(metrics.seq2seq.MSE) }}</p></div>
+        <div><span style="color:var(--text-muted);font-size:.78rem">MAE</span>
+          <p style="font-weight:700;color:var(--accent1)">{{ "%.4f"|format(metrics.seq2seq.MAE) }}</p></div>
+      </div>
+      {% else %}
+      <p style="color:var(--text-muted);font-size:.85rem">Chưa có kết quả</p>
+      {% endif %}
+      <a href="/models#seq2seq" class="btn btn-ghost" style="margin-top:1rem;font-size:.82rem;padding:.4rem 1rem">Chi tiết →</a>
+    </div>
+
+    <div class="card model-card-tcn fade-in">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <h3>TCN_v2</h3>
+        <span class="badge badge-tcn">Parallel</span>
+      </div>
+      <p style="color:var(--text-muted);font-size:.87rem;margin:.6rem 0 1rem">
+        Temporal Convolutional Network với dilated convolutions, receptive field ≥ seq_len.
+      </p>
+      {% if metrics and 'tcn' in metrics %}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+        <div><span style="color:var(--text-muted);font-size:.78rem">MSE</span>
+          <p style="font-weight:700;color:var(--accent2)">{{ "%.4f"|format(metrics.tcn.MSE) }}</p></div>
+        <div><span style="color:var(--text-muted);font-size:.78rem">MAE</span>
+          <p style="font-weight:700;color:var(--accent2)">{{ "%.4f"|format(metrics.tcn.MAE) }}</p></div>
+      </div>
+      {% else %}
+      <p style="color:var(--text-muted);font-size:.85rem">Chưa có kết quả</p>
+      {% endif %}
+      <a href="/models#tcn" class="btn btn-ghost" style="margin-top:1rem;font-size:.82rem;padding:.4rem 1rem">Chi tiết →</a>
+    </div>
+
+    <div class="card model-card-attention fade-in" style="position:relative">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <h3>BiLSTM + Attention</h3>
+        <span class="badge badge-attention">Best ⭐</span>
+      </div>
+      <p style="color:var(--text-muted);font-size:.87rem;margin:.6rem 0 1rem">
+        BiLSTM Encoder + Scaled Dot-Product Attention + Future covariates. Model tốt nhất.
+      </p>
+      {% if metrics and 'attention' in metrics %}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+        <div><span style="color:var(--text-muted);font-size:.78rem">MSE</span>
+          <p style="font-weight:700;color:var(--accent3)">{{ "%.4f"|format(metrics.attention.MSE) }}</p></div>
+        <div><span style="color:var(--text-muted);font-size:.78rem">MAE</span>
+          <p style="font-weight:700;color:var(--accent3)">{{ "%.4f"|format(metrics.attention.MAE) }}</p></div>
+      </div>
+      {% else %}
+      <p style="color:var(--text-muted);font-size:.85rem">Chưa có kết quả</p>
+      {% endif %}
+      <a href="/models#attention" class="btn btn-ghost" style="margin-top:1rem;font-size:.82rem;padding:.4rem 1rem">Chi tiết →</a>
+    </div>
+  </div>
+
+  <!-- Quick metrics summary table -->
+  {% if metrics and metrics|length == 3 %}
+  <div class="section-header">
+    <h2>Bảng So Sánh Nhanh</h2>
+    <div class="section-divider"></div>
+  </div>
+  <div class="card fade-in" style="overflow-x:auto">
+    <table class="metric-table">
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>MSE (°C²)</th>
+          <th>RMSE (°C)</th>
+          <th>MAE (°C)</th>
+          <th>sMAPE %</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set best_mse = [metrics.seq2seq.MSE, metrics.tcn.MSE, metrics.attention.MSE]|min %}
+        {% for key, label, color in [('seq2seq','LSTM Seq2Seq','var(--accent1)'),('tcn','TCN_v2','var(--accent2)'),('attention','BiLSTM + Attention','var(--accent3)')] %}
+        <tr {% if metrics[key].MSE == best_mse %}class="row-best"{% endif %}>
+          <td><span style="color:{{color}};font-weight:600">{{ label }}</span>
+            {% if metrics[key].MSE == best_mse %}<span class="badge-best">Best ⭐</span>{% endif %}
+          </td>
+          <td {% if metrics[key].MSE == best_mse %}class="best-val"{% endif %}>{{ "%.4f"|format(metrics[key].MSE) }}</td>
+          <td>{{ "%.4f"|format(metrics[key].RMSE) }}</td>
+          <td>{{ "%.4f"|format(metrics[key].MAE) }}</td>
+          <td>{{ "%.2f"|format(metrics[key]['sMAPE%']) }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

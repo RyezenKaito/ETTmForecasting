@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Weights Report – ETTm1 Demo{% endblock %}
+{% block description %}Báo cáo trọng số layer-by-layer cho 3 model: norm, mean, std.{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <h1 class="page-title fade-in">⚖️ Báo Cáo Trọng Số</h1>
+  <p class="page-sub fade-in">
+    Phân tích layer-by-layer: shape, số params, L2-norm, mean, std của từng model.
+  </p>
+
+  {% if not report %}
+  <div class="callout fade-in">
+    <strong>⏳ Models chưa được load.</strong>
+    Đảm bảo file <code>.pth</code> tồn tại trong thư mục <code>models/</code>.
+  </div>
+  {% endif %}
+
+  <!-- Tab selector for models -->
+  <div class="tabs-container">
+    <div class="tabs">
+      {% for key, data in report.items() %}
+      <button class="tab-btn {% if loop.first %}active{% endif %}"
+              data-target="wt-{{ key }}">
+        {{ data.label }}
+        <span class="badge badge-gray" style="margin-left:.3rem">{{ "{:,}".format(data.total) }} params</span>
+      </button>
+      {% endfor %}
+    </div>
+
+    {% for key, data in report.items() %}
+    <div id="wt-{{ key }}" class="tab-panel {% if loop.first %}active{% endif %} fade-in">
+
+      <!-- Summary card -->
+      <div class="grid-3" style="margin-bottom:1.4rem">
+        <div class="card model-card-{{ key }}">
+          <h3>{{ data.label }}</h3>
+          <p style="font-size:1.8rem;font-weight:700;color:
+            {% if key == 'seq2seq' %}var(--accent1)
+            {% elif key == 'tcn' %}var(--accent2)
+            {% else %}var(--accent3){% endif %}">
+            {{ "{:,}".format(data.total) }}
+          </p>
+          <p style="color:var(--text-muted);font-size:.85rem">total trainable params</p>
+        </div>
+        <div class="card">
+          <h3>Layers</h3>
+          <p style="font-size:1.8rem;font-weight:700;color:var(--accent-gold)">{{ data.layers|length }}</p>
+          <p style="color:var(--text-muted);font-size:.85rem">named parameter tensors</p>
+        </div>
+        <div class="card">
+          <h3>Avg L2 Norm</h3>
+          {% set avg_norm = (data.layers | map(attribute='norm') | list | sum) / (data.layers|length) %}
+          <p style="font-size:1.8rem;font-weight:700;color:var(--text)">{{ "%.3f"|format(avg_norm) }}</p>
+          <p style="color:var(--text-muted);font-size:.85rem">mean weight L2-norm</p>
+        </div>
+      </div>
+
+      <!-- Layer table -->
+      <div class="card fade-in" style="overflow-x:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+          <h3>Layer Details</h3>
+          <button class="btn btn-ghost weight-toggle" data-target="tbody-{{ key }}"
+                  style="font-size:.82rem;padding:.3rem .9rem">▼ Expand</button>
+        </div>
+        <table class="weight-table">
+          <thead>
+            <tr>
+              <th>Layer Name</th>
+              <th>Shape</th>
+              <th>Params</th>
+              <th>L2 Norm</th>
+              <th>Mean</th>
+              <th>Std</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-{{ key }}" style="display:none">
+            {% for layer in data.layers %}
+            <tr>
+              <td>{{ layer.name }}</td>
+              <td style="color:var(--text-muted)">{{ layer.shape | join(' × ') }}</td>
+              <td style="color:var(--text-muted)">{{ "{:,}".format(layer.n) }}</td>
+              <td style="color:
+                {% if layer.norm > 5 %}var(--accent2)
+                {% elif layer.norm > 2 %}var(--accent1)
+                {% else %}var(--accent3){% endif %}">
+                {{ layer.norm }}</td>
+              <td>{{ layer.mean }}</td>
+              <td>{{ layer.std }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <p style="color:var(--text-muted);font-size:.8rem;margin-top:.8rem">
+          💡 Click "Expand" để xem toàn bộ {{ data.layers|length }} layers.
+        </p>
+      </div>
+
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Interpretation guide -->
+  <div class="section-header" style="margin-top:2rem">
+    <h2>Hướng Dẫn Đọc</h2>
+    <div class="section-divider"></div>
+  </div>
+  <div class="grid-3 fade-in">
+    <div class="card">
+      <h3 style="color:var(--accent3)">L2 Norm thấp (0–2)</h3>
+      <p style="color:var(--text-muted);font-size:.87rem">
+        Trọng số nhỏ, model có khả năng bị underfit hoặc đã converge tốt với regularization.
+      </p>
+    </div>
+    <div class="card">
+      <h3 style="color:var(--accent1)">L2 Norm trung bình (2–5)</h3>
+      <p style="color:var(--text-muted);font-size:.87rem">
+        Bình thường cho hầu hết các layer recurrent/convolutional đã trained.
+      </p>
+    </div>
+    <div class="card">
+      <h3 style="color:var(--accent2)">L2 Norm cao (&gt;5)</h3>
+      <p style="color:var(--text-muted);font-size:.87rem">
+        Có thể do weight explosion – kiểm tra gradient clipping. Thường gặp ở embedding layers lớn.
+      </p>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

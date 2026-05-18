@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Kết Quả – ETTm1 Demo{% endblock %}
+{% block description %}So sánh kết quả MSE, RMSE, MAE, sMAPE của 3 model trên test set ETTm1.{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <h1 class="page-title fade-in">📊 Kết Quả &amp; So Sánh</h1>
+  <p class="page-sub fade-in">Đánh giá trên test set (20% dữ liệu cuối), đơn vị nhiệt độ dầu biến thế (°C).</p>
+
+  <!-- ── Bảng metrics ──────────────────────────────────────────────────── -->
+  <div class="section-header">
+    <h2>Bảng Metrics Tổng Hợp</h2>
+    <div class="section-divider"></div>
+  </div>
+
+  {% if metrics and metrics|length > 0 %}
+  <div class="card fade-in" style="overflow-x:auto;margin-bottom:2rem">
+    <table class="metric-table">
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>MSE (°C²)</th>
+          <th>RMSE (°C)</th>
+          <th>MAE (°C)</th>
+          <th>sMAPE %</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if metrics|length == 3 %}
+          {% set best_mse = [metrics.seq2seq.MSE, metrics.tcn.MSE, metrics.attention.MSE]|min %}
+        {% endif %}
+        {% for key, label, color in [
+            ('seq2seq','LSTM Seq2Seq','var(--accent1)'),
+            ('tcn','TCN_v2','var(--accent2)'),
+            ('attention','BiLSTM + Attention','var(--accent3)')
+        ] %}
+        {% if key in metrics %}
+        <tr {% if metrics|length==3 and metrics[key].MSE == best_mse %}class="row-best"{% endif %}>
+          <td>
+            <span style="color:{{color}};font-weight:600">{{ label }}</span>
+            {% if metrics|length==3 and metrics[key].MSE == best_mse %}
+              <span class="badge-best" style="margin-left:.4rem">Best ⭐</span>
+            {% endif %}
+          </td>
+          <td {% if metrics|length==3 and metrics[key].MSE == best_mse %}class="best-val"{% endif %}
+            data-count="{{ metrics[key].MSE }}" data-decimals="4">{{ "%.4f"|format(metrics[key].MSE) }}</td>
+          <td>{{ "%.4f"|format(metrics[key].RMSE) }}</td>
+          <td>{{ "%.4f"|format(metrics[key].MAE) }}</td>
+          <td>{{ "%.2f"|format(metrics[key]['sMAPE%']) }}%</td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="callout fade-in" style="margin-bottom:2rem">
+    <strong>⏳ Chưa có kết quả.</strong>
+    Chạy <code>python scripts/run_evaluation.py</code> để sinh artifacts.
+  </div>
+  {% endif %}
+
+  <!-- ── Bar chart ─────────────────────────────────────────────────────── -->
+  {% if bar_chart %}
+  <div class="section-header">
+    <h2>Bar Chart So Sánh</h2>
+    <div class="section-divider"></div>
+  </div>
+  <div class="card fade-in" style="margin-bottom:2rem">
+    <img src="data:image/png;base64,{{ bar_chart }}" alt="Bar chart comparison" style="width:100%">
+  </div>
+  {% endif %}
+
+  <!-- ── Prediction plot ───────────────────────────────────────────────── -->
+  {% if pred_chart %}
+  <div class="section-header">
+    <h2>Prediction Visualization (400 samples đầu)</h2>
+    <div class="section-divider"></div>
+  </div>
+  <div class="card fade-in" style="margin-bottom:2rem">
+    <img src="data:image/png;base64,{{ pred_chart }}" alt="Prediction comparison" style="width:100%">
+  </div>
+  {% endif %}
+
+  <!-- ── Learning curves (stub data from notebook) ──────────────────── -->
+  <div class="section-header">
+    <h2>Learning Curves – Thông Tin Từ Notebook</h2>
+    <div class="section-divider"></div>
+  </div>
+
+  <div class="grid-3" style="margin-bottom:2rem">
+    {% for key, label, color, best_ep, best_val in [
+        ('seq2seq','LSTM Seq2Seq','var(--accent1)', lc_data.seq2seq.best_epoch, lc_data.seq2seq.best_val),
+        ('tcn','TCN_v2','var(--accent2)', lc_data.tcn.best_epoch, lc_data.tcn.best_val),
+        ('attention','BiLSTM + Attention','var(--accent3)', lc_data.attention.best_epoch, lc_data.attention.best_val)
+    ] %}
+    <div class="card model-card-{{ key }} fade-in">
+      <h3 style="color:{{color}}">{{ label }}</h3>
+      <table style="font-size:.85rem;width:100%;border-collapse:collapse;margin-top:.6rem">
+        <tr>
+          <td style="color:var(--text-muted);padding:.3rem 0">Epochs run</td>
+          <td style="font-weight:600">
+            {% if key == 'seq2seq' %}~2 (early stop)
+            {% elif key == 'tcn' %}10 (early stop ep5)
+            {% else %}7 (early stop ep2)
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-muted);padding:.3rem 0">Best epoch</td>
+          <td style="font-weight:600;color:var(--accent-gold)">{{ best_ep }}</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-muted);padding:.3rem 0">Best val loss</td>
+          <td style="font-weight:600;color:{{color}}">{{ "%.4f"|format(best_val) }}</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-muted);padding:.3rem 0">Patience</td>
+          <td>5</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text-muted);padding:.3rem 0">Scheduler</td>
+          <td>CosineAnnealingLR</td>
+        </tr>
+      </table>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ── Note on 1-step vs multi-step ─────────────────────────────────── -->
+  <div class="section-header">
+    <h2>Ghi Chú: 1-Step vs True Multi-Step</h2>
+    <div class="section-divider"></div>
+  </div>
+
+  <div class="card fade-in" style="margin-bottom:2rem">
+    <div class="grid-2">
+      <div>
+        <h3 style="color:var(--accent3)">✅ Evaluation trong demo này</h3>
+        <p style="color:var(--text-muted);font-size:.88rem;margin-top:.6rem;line-height:1.8">
+          <strong style="color:var(--text)">True multi-step</strong>: mỗi sample, model predict 24 bước cùng lúc
+          (không dùng ground-truth làm input decoder lúc test).
+          Metrics phản ánh <em>thực sự</em> khả năng dự báo 6 giờ tương lai.
+        </p>
+      </div>
+      <div>
+        <h3 style="color:var(--accent-gold)">⚠️ 1-Step Autoregressive Evaluation</h3>
+        <p style="color:var(--text-muted);font-size:.88rem;margin-top:.6rem;line-height:1.8">
+          Nếu đánh giá bằng cách roll từng bước và dùng prediction làm input tiếp theo,
+          lỗi sẽ <em>tích lũy</em> và metrics sẽ xấu hơn nhiều – nhưng đây mới là
+          kịch bản thực tế khi không có ground-truth tương lai.
+        </p>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

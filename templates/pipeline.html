@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}Pipeline – ETTm1 Demo{% endblock %}
+{% block description %}Chi tiết pipeline tiền xử lý dữ liệu ETTm1: EDA, split, time features, STL, scaling.{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <h1 class="page-title fade-in">⚙️ Pipeline Tiền Xử Lý Dữ Liệu</h1>
+  <p class="page-sub fade-in">Theo file PhanPhungVu – pipeline đúng, không có data leakage.</p>
+
+  <!-- Steps overview -->
+  <div class="section-header">
+    <h2>Các Bước</h2>
+    <div class="section-divider"></div>
+  </div>
+
+  <div class="card fade-in" style="margin-bottom:2rem">
+    <div class="pipeline-steps">
+
+      <div class="pipeline-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <h4>Load CSV &amp; Set Index</h4>
+          <p>Load <code>ETTm1.csv</code>, parse cột <code>date</code> thành datetime, set làm index.</p>
+        </div>
+      </div>
+
+      <div class="pipeline-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <h4>Drop MUFL &amp; MULL (correlation &gt; 0.9)</h4>
+          <p>Phân tích tương quan → drop 2 biến có tương quan cao với biến khác để tránh redundancy.</p>
+        </div>
+      </div>
+
+      <div class="pipeline-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <h4>Train / Val / Test Split — 60 / 20 / 20</h4>
+          <p>
+            Train: <strong>{{ (69680 * 0.6)|int }}</strong> mẫu &nbsp;·&nbsp;
+            Val: <strong>{{ (69680 * 0.2)|int }}</strong> mẫu &nbsp;·&nbsp;
+            Test: <strong>{{ (69680 * 0.2)|int }}</strong> mẫu
+          </p>
+        </div>
+      </div>
+
+      <div class="pipeline-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <h4>Time Features (4 features)</h4>
+          <p>
+            <code>time_sin</code>, <code>time_cos</code> – chu kỳ trong ngày (96 bước = 1 ngày)<br>
+            <code>day_sin</code>, <code>day_cos</code> – chu kỳ tuần (7 ngày)
+          </p>
+        </div>
+      </div>
+
+      <div class="pipeline-step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <h4>STL Decomposition ⚠️</h4>
+          <p>Fit STL <strong>chỉ trên tập train</strong> → extract seasonal pattern 1 chu kỳ → apply cho val/test.</p>
+        </div>
+      </div>
+
+      <div class="pipeline-step">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <h4>StandardScaler</h4>
+          <p>Fit <strong>chỉ trên train</strong>, transform val &amp; test. OT: mean = <strong>{{ scaler_mean }}</strong>, scale = <strong>{{ scaler_scale }}</strong>.</p>
+        </div>
+      </div>
+
+      <div class="pipeline-step">
+        <div class="step-num">7</div>
+        <div class="step-body">
+          <h4>TimeSeriesDataset &amp; DataLoader</h4>
+          <p>
+            <code>seq_len = 336</code> (3.5 ngày) &nbsp;·&nbsp;
+            <code>label_len = 48</code> &nbsp;·&nbsp;
+            <code>pred_len = 24</code> (6 giờ) &nbsp;·&nbsp;
+            <code>batch = 64</code>
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Section A: EDA -->
+  <div class="section-header">
+    <h2>A — EDA: Khám Phá Dữ Liệu</h2>
+    <div class="section-divider"></div>
+  </div>
+
+  <div class="grid-2" style="margin-bottom:2rem">
+    <div class="card fade-in">
+      <h3>📊 Features sau preprocessing</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.8rem">
+        {% for col in columns %}
+          <span class="badge {% if col == 'OT' %}badge-orange{% elif 'sin' in col or 'cos' in col %}badge-blue{% elif col in ['trend','seasonal','residual'] %}badge-green{% else %}badge-gray{% endif %}">
+            {{ col }}
+          </span>
+        {% endfor %}
+      </div>
+      <p style="margin-top:1rem;color:var(--text-muted);font-size:.85rem">
+        <strong style="color:var(--text)">{{ n_features }}</strong> features tổng cộng &nbsp;·&nbsp;
+        Target index: <strong style="color:var(--accent2)">{{ target_index }}</strong>
+      </p>
+    </div>
+
+    <div class="card fade-in">
+      <h3>🔗 Tương quan &amp; Quyết định Drop</h3>
+      <p style="color:var(--text-muted);font-size:.87rem;margin-bottom:.8rem">
+        Ma trận tương quan Pearson cho thấy MUFL và MULL có <strong style="color:var(--accent2)">tương quan &gt; 0.9</strong> với các biến HUFL, HULL → drop để tránh redundancy và multicollinearity.
+      </p>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap">
+        <div style="text-align:center">
+          <div style="font-size:1.6rem;font-weight:700;color:var(--danger)">MUFL</div>
+          <div style="font-size:.75rem;color:var(--text-muted)">dropped</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:1.6rem;font-weight:700;color:var(--danger)">MULL</div>
+          <div style="font-size:.75rem;color:var(--text-muted)">dropped</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section B: Split & Time Features -->
+  <div class="section-header">
+    <h2>B — Split &amp; Time Features</h2>
+    <div class="section-divider"></div>
+  </div>
+
+  <div class="card fade-in" style="margin-bottom:2rem">
+    <h3>Code: Split 60/20/20</h3>
+    <div class="code-block">
+<span class="cm"># ── Split theo tỉ lệ 60/20/20 ──────────────────────────────────────</span>
+n            = <span class="fn">len</span>(df)
+train_size   = <span class="fn">int</span>(n * <span class="num">0.6</span>)   <span class="cm"># 41,808</span>
+val_size     = <span class="fn">int</span>(n * <span class="num">0.2</span>)   <span class="cm"># 13,936</span>
+test_size    = <span class="fn">int</span>(n * <span class="num">0.2</span>)   <span class="cm"># 13,936</span>
+
+train_df = df.iloc[:train_size].copy()
+val_df   = df.iloc[train_size : train_size + val_size].copy()
+test_df  = df.iloc[train_size + val_size :].copy()
+
+<span class="cm"># ── Thêm 4 time features ──────────────────────────────────────────────</span>
+<span class="kw">def</span> <span class="fn">add_time_features</span>(dataframe):
+    idx = dataframe.index
+    t_intra = idx.hour * <span class="num">4</span> + idx.minute // <span class="num">15</span>
+    dataframe[<span class="str">'time_sin'</span>] = np.sin(<span class="num">2</span> * np.pi * t_intra / <span class="num">96</span>)
+    dataframe[<span class="str">'time_cos'</span>] = np.cos(<span class="num">2</span> * np.pi * t_intra / <span class="num">96</span>)
+    dataframe[<span class="str">'day_sin'</span>]  = np.sin(<span class="num">2</span> * np.pi * idx.dayofweek / <span class="num">7</span>)
+    dataframe[<span class="str">'day_cos'</span>]  = np.cos(<span class="num">2</span> * np.pi * idx.dayofweek / <span class="num">7</span>)
+    <span class="kw">return</span> dataframe
+    </div>
+  </div>
+
+  <!-- Section C: STL -->
+  <div class="section-header">
+    <h2>C — STL Decomposition</h2>
+    <div class="section-divider"></div>
+  </div>
+
+  <div class="callout fade-in">
+    <strong>⚠️ Chú ý quan trọng:</strong>
+    STL được <strong>fit chỉ trên tập train</strong> để tránh data leakage.
+    Seasonal pattern (1 chu kỳ ngày đại diện – 96 bước) được extract từ train,
+    sau đó tile &amp; apply cho val/test theo đúng vị trí giờ trong ngày thực tế (không bị lệch pha).
+  </div>
+
+  <div class="card fade-in" style="margin-top:1.2rem;margin-bottom:2rem">
+    <h3>Code: STL – fit train, apply val/test</h3>
+    <div class="code-block">
+<span class="cm"># STEP 1: Fit STL chỉ trên train ───────────────────────────────────</span>
+period = <span class="num">96</span>   <span class="cm"># 15-min × 96 = 1 ngày</span>
+stl    = <span class="fn">STL</span>(train_df[<span class="str">"OT"</span>], period=period)
+res    = stl.<span class="fn">fit</span>()
+
+train_df[<span class="str">"trend"</span>]    = res.trend.values
+train_df[<span class="str">"seasonal"</span>] = res.seasonal.values
+train_df[<span class="str">"residual"</span>] = res.resid.values
+
+<span class="cm"># STEP 2: Extract 1 chu kỳ seasonal đại diện ──────────────────────</span>
+seasonal_pattern = np.<span class="fn">array</span>([
+    res.seasonal[i::period].<span class="fn">mean</span>() <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(period)
+])   <span class="cm"># shape: (96,)</span>
+
+<span class="cm"># STEP 3: Apply cho val/test ───────────────────────────────────────</span>
+<span class="kw">for</span> split_df <span class="kw">in</span> [val_df, test_df]:
+    split_df[<span class="str">"trend"</span>]    = <span class="fn">apply_trend</span>(split_df, window=period)
+    split_df[<span class="str">"seasonal"</span>] = <span class="fn">apply_seasonal</span>(split_df, seasonal_pattern)
+    split_df[<span class="str">"residual"</span>] = (split_df[<span class="str">"OT"</span>]
+                            - split_df[<span class="str">"trend"</span>]
+                            - split_df[<span class="str">"seasonal"</span>]).values
+    </div>
+    <div class="grid-2" style="margin-top:1.2rem">
+      <div style="background:rgba(231,76,60,.07);border:1px solid rgba(231,76,60,.25);border-radius:var(--radius-sm);padding:1rem">
+        <strong style="color:var(--danger)">❌ Cách sai (Naive)</strong>
+        <p style="font-size:.85rem;color:var(--text-muted);margin-top:.4rem">
+          Fit STL trên <em>toàn bộ</em> df → val/test "thấy" thông tin tương lai → data leakage → metrics giả tạo tốt hơn thực tế.
+        </p>
+      </div>
+      <div style="background:rgba(92,184,92,.07);border:1px solid rgba(92,184,92,.25);border-radius:var(--radius-sm);padding:1rem">
+        <strong style="color:var(--accent3)">✅ Cách đúng</strong>
+        <p style="font-size:.85rem;color:var(--text-muted);margin-top:.4rem">
+          Fit STL <em>chỉ trên train</em>, extract seasonal pattern, tile theo phase thực tế cho val/test → không có data leakage.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section D: Scaling & Dataset -->
+  <div class="section-header">
+    <h2>D — Scaling &amp; TimeSeriesDataset</h2>
+    <div class="section-divider"></div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card fade-in">
+      <h3>StandardScaler</h3>
+      <div class="code-block" style="font-size:.8rem">
+scaler       = <span class="fn">StandardScaler</span>()
+train_scaled = scaler.<span class="fn">fit_transform</span>(train_df.values)
+val_scaled   = scaler.<span class="fn">transform</span>(val_df.values)
+test_scaled  = scaler.<span class="fn">transform</span>(test_df.values)
+      </div>
+      <p style="margin-top:.8rem;font-size:.85rem;color:var(--text-muted)">
+        OT mean = <strong style="color:var(--text)">{{ scaler_mean }}</strong> °C &nbsp;·&nbsp;
+        scale = <strong style="color:var(--text)">{{ scaler_scale }}</strong>
+      </p>
+    </div>
+
+    <div class="card fade-in">
+      <h3>TimeSeriesDataset – cửa sổ trượt</h3>
+      <div style="margin:.8rem 0;font-size:.85rem;color:var(--text-muted)">
+        <p>Mỗi sample gồm:</p>
+        <ul style="margin:.5rem 0 .5rem 1.2rem;line-height:2">
+          <li><code>seq_x</code>: <strong>336</strong> bước (~3.5 ngày) input</li>
+          <li><code>seq_y</code>: <strong>48+24=72</strong> bước (label + pred)</li>
+          <li>Target: <code>seq_y[:, -24:, OT_idx]</code></li>
+        </ul>
+      </div>
+      <div class="arch-diagram" style="font-size:.78rem;line-height:1.8">
+        <span class="arch-node arch-node-blue">seq_x [336, F]</span>
+        <span class="arch-arrow"> ── </span>
+        <span class="arch-node arch-node-green">overlap [48, F]</span>
+        <span class="arch-arrow"> ── </span>
+        <span class="arch-node arch-node-orange">pred [24, F]</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
