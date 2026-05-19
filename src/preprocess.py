@@ -1,13 +1,13 @@
 """
 Data preprocessing pipeline – theo file PhanPhungVu.
 Bước:
-  1. Load ETTm1.csv, set index date
-  2. Drop MUFL, MULL (nếu tồn tại)
-  3. STL – fit trên toàn bộ df (đúng như notebook gốc)
-  4. Split 60/20/20
-  5. add_time_features (time_sin/cos + day_sin/cos) → luôn ở cuối
-  6. StandardScaler – fit CHỈ trên train
-  7. Trả về train/val/test scaled arrays + meta
+  - Load ETTm1.csv, set index date
+  - Drop MUFL, MULL (nếu tồn tại)
+  - STL – fit trên toàn bộ df (đúng như notebook gốc)
+  - Split 60/20/20
+  - add_time_features (time_sin/cos + day_sin/cos) → luôn ở cuối
+  - StandardScaler – fit CHỈ trên train
+  - Trả về train/val/test scaled arrays + meta
 """
 
 import numpy as np
