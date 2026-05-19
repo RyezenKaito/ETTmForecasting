@@ -1,24 +1,27 @@
 """
-Model definitions – extracted from both notebooks.
-  1. LSTM_Seq2Seq_Activate (from PhanPhungVu_PhamLeKhanhAn_Report35.ipynb)
-  2. LSTM_Seq2Seq_Disabled (from Report_Model_Backup.ipynb)
-  3. TCN_v9_Activate (from PhanPhungVu_PhamLeKhanhAn_Report35.ipynb)
-  4. TCN_v9_Disabled (from Report_Model_Backup.ipynb)
+Model definitions.
+
+ACTIVE models (từ PhanPhungVu_PhamLeKhanhAn_Report35.ipynb):
+  1. LSTM_Seq2Seq_Activate  (Cell 38)
+  2. TCN_v9_Activate        (Cell 47)
+
+DISABLED models (từ Report_Model_Backup.ipynb):
+  3. LSTM_Seq2Seq_Disabled
+  4. TCN_v9_Disabled
 """
 
-import random
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.nn.utils import weight_norm
+import random
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. LSTM Seq2Seq
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# 1. LSTM Seq2Seq ACTIVE (Cell 38)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 class LSTM_Seq2Seq_Activate(nn.Module):
     def __init__(self, input_dim, hidden_size=128, num_layers=2,
-                 pred_len=24, dropout=0.3, target_index=0):
+                 pred_len=24, dropout=0.3, target_index=4, **kwargs):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
@@ -28,13 +31,16 @@ class LSTM_Seq2Seq_Activate(nn.Module):
         self.encoder = nn.LSTM(input_dim, hidden_size, num_layers,
                                batch_first=True,
                                dropout=dropout if num_layers > 1 else 0)
+
         self.decoder = nn.LSTM(1, hidden_size, num_layers,
                                batch_first=True,
                                dropout=dropout if num_layers > 1 else 0)
+
         self.fc_out = nn.Linear(hidden_size, 1)
 
     def forward(self, x, y_teacher=None, teacher_forcing_ratio=0.5, **kwargs):
         _, (h, c) = self.encoder(x)
+        
         decoder_input = x[:, -1, self.target_index].unsqueeze(1).unsqueeze(2)
 
         outputs = []
@@ -54,42 +60,9 @@ class LSTM_Seq2Seq_Activate(nn.Module):
 
         return torch.cat(outputs, dim=1)
 
-
-class LSTM_Seq2Seq_Disabled(nn.Module):
-    def __init__(self, input_dim, hidden=128, n_layers=2, dropout=0.2,
-                 pred_len=24, target_index=0):
-        super().__init__()
-        self.pred_len = pred_len
-        self.target_index = target_index
-
-        self.encoder = nn.LSTM(input_dim, hidden, n_layers, batch_first=True,
-                               dropout=dropout if n_layers > 1 else 0)
-        self.decoder = nn.LSTM(1, hidden, n_layers, batch_first=True,
-                               dropout=dropout if n_layers > 1 else 0)
-        self.fc_out = nn.Linear(hidden, 1)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x_enc, y_true=None, tf_ratio=0.0, **kwargs):
-        _, (h, c) = self.encoder(x_enc)
-        last_val = x_enc[:, -1, self.target_index]
-        dec_input = last_val.unsqueeze(1).unsqueeze(2)
-
-        predictions = []
-        for t in range(self.pred_len):
-            dec_output, (h, c) = self.decoder(dec_input, (h, c))
-            pred = self.fc_out(self.dropout(dec_output[:, -1, :]))
-            predictions.append(pred)
-            if y_true is not None and random.random() < tf_ratio:
-                dec_input = y_true[:, t].unsqueeze(1).unsqueeze(2)
-            else:
-                dec_input = pred.detach().unsqueeze(1)
-
-        return torch.cat(predictions, dim=1)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. TCN_v2
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2. TCN ACTIVE (Cell 47)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 class TemporalBlock(nn.Module):
     def __init__(self, in_ch, out_ch, kernel_size, dilation, dropout):
@@ -114,10 +87,9 @@ class TemporalBlock(nn.Module):
         res = r if self.proj is None else self.proj(r)
         return self.act(out + res)
 
-
 class TCN_v9_Activate(nn.Module):
-    def __init__(self, input_dim, num_channels, kernel_size=5,
-                 dropout=0.3, horizon=24, covariate_dim=4, target_index=0):
+    def __init__(self, input_dim, num_channels, kernel_size=7,
+                 dropout=0.3, horizon=24, covariate_dim=4, target_index=4, **kwargs):
         super().__init__()
         self.target_index = target_index
         layers = []
@@ -143,10 +115,47 @@ class TCN_v9_Activate(nn.Module):
         pred = self.fc_head(feat)
         return pred
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 3. LSTM Seq2Seq DISABLED (từ Report_Model_Backup.ipynb)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class LSTM_Seq2Seq_Disabled(nn.Module):
+    def __init__(self, input_dim, hidden=128, n_layers=2, dropout=0.2,
+                 pred_len=24, target_index=4):
+        super().__init__()
+        self.pred_len = pred_len
+        self.target_index = target_index
+        self.encoder = nn.LSTM(input_dim, hidden, n_layers, batch_first=True,
+                               dropout=dropout if n_layers > 1 else 0)
+        self.decoder = nn.LSTM(1, hidden, n_layers, batch_first=True,
+                               dropout=dropout if n_layers > 1 else 0)
+        self.fc_out = nn.Linear(hidden, 1)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x_enc, y_true=None, tf_ratio=0.0, **kwargs):
+        _, (h, c) = self.encoder(x_enc)
+        last_val = x_enc[:, -1, self.target_index]
+        dec_input = last_val.unsqueeze(1).unsqueeze(2)
+
+        predictions = []
+        for t in range(self.pred_len):
+            dec_output, (h, c) = self.decoder(dec_input, (h, c))
+            pred = self.fc_out(self.dropout(dec_output[:, -1, :]))
+            predictions.append(pred)
+            if y_true is not None and random.random() < tf_ratio:
+                dec_input = y_true[:, t].unsqueeze(1).unsqueeze(2)
+            else:
+                dec_input = pred.detach().unsqueeze(1)
+
+        return torch.cat(predictions, dim=1)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 4. TCN DISABLED (từ Report_Model_Backup.ipynb)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 class TCN_v9_Disabled(nn.Module):
     def __init__(self, input_dim, num_channels, kernel_size=5,
-                 dropout=0.3, horizon=24, covariate_dim=4, target_index=0):
+                 dropout=0.3, horizon=24, covariate_dim=4, target_index=4, **kwargs):
         super().__init__()
         self.target_index = target_index
         layers = []
@@ -172,24 +181,21 @@ class TCN_v9_Disabled(nn.Module):
         pred = self.fc_head(feat)
         return pred
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Factory / hyperparameter configs
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# Configs
+# ═══════════════════════════════════════════════════════════════════════════════
 
 MODEL_CONFIGS = {
     "seq2seq": {
-        "cls":         LSTM_Seq2Seq_Activate,
-        "kwargs":      dict(hidden_size=128, num_layers=2, dropout=0.3),
-        "weight_file": "G:/Code/Deep Learning/ETTForecasting/models/best_seq2seq_v9_last_checkpoint.pth",
-        "label":       "LSTM Seq2Seq",
+        "cls": LSTM_Seq2Seq_Activate,
+        "kwargs": dict(hidden_size=128, num_layers=2, dropout=0.3),
+        "weight_file": "G:/Code/Deep Learning/ETTForecasting/models/best_seq2seq_v9_last_checkpoint.pth", # Use the EXACT correct checkpoint
+        "label": "LSTM Seq2Seq",
     },
     "tcn": {
-        "cls":         TCN_v9_Activate,
-        "kwargs":      dict(num_channels=[32, 64, 128, 128, 256],
-                           kernel_size=7, dropout=0.3,
-                           covariate_dim=4),
+        "cls": TCN_v9_Activate,
+        "kwargs": dict(num_channels=[32, 64, 128, 128, 256], kernel_size=7, dropout=0.3, covariate_dim=4),
         "weight_file": "G:/Code/Deep Learning/ETTForecasting/models/best_tcn_v9_last_checkpoint.pth",
-        "label":       "TCN",
+        "label": "TCN",
     },
 }

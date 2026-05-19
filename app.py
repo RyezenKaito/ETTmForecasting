@@ -32,16 +32,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # ── global state (loaded once at startup) ─────────────────────────────────────
 _PIPELINE   = None   # (train_sc, val_sc, test_sc, scaler, ti, nf, train_df)
 _MODELS     = {}     # {key: model}
-_MODEL_DIMS = {}     # {key: actual_input_dim detected from checkpoint}
 _TEST_DS    = None
 _TEST_PREDS = {}     # {key: np.ndarray (N, pred_len)}
 _TEST_TRUES = {}
 _METRICS    = {}     # {key: {MSE, RMSE, MAE, sMAPE%}}
-_LC_DATA    = {}     # learning-curve stub (best-epoch info from notebook outputs)
+_LC_DATA    = {}     # learning-curve stub
 
 
 def _init():
-    global _PIPELINE, _MODELS, _MODEL_DIMS, _TEST_DS, _TEST_PREDS, _TEST_TRUES, _METRICS, _LC_DATA
+    global _PIPELINE, _MODELS, _TEST_DS, _TEST_PREDS, _TEST_TRUES, _METRICS, _LC_DATA
 
     if _PIPELINE is not None:
         return  # already initialised
@@ -50,6 +49,10 @@ def _init():
     (train_sc, val_sc, test_sc,
      scaler, ti, nf, train_df) = build_pipeline(DATA_PATH)
     _PIPELINE = (train_sc, val_sc, test_sc, scaler, ti, nf, train_df)
+
+    print(f"[init] Columns: {list(train_df.columns)}")
+    print(f"[init] target_index={ti}, n_features={nf}")
+    print(f"[init] Scaler mean[OT]={scaler.mean_[ti]:.4f}, scale[OT]={scaler.scale_[ti]:.4f}")
 
     _TEST_DS = TimeSeriesDataset(test_sc, SEQ_LEN, LABEL_LEN, PRED_LEN)
     test_loader = DataLoader(_TEST_DS, batch_size=64, shuffle=False)
@@ -68,38 +71,36 @@ def _init():
             if os.path.exists(p_path) and os.path.exists(t_path):
                 _TEST_PREDS[key] = np.load(p_path)
                 _TEST_TRUES[key] = np.load(t_path)
-    else:
-        print("[init] No pre-computed results – running evaluation (may take a while)…")
-        for key in MODEL_CONFIGS:
-            print(f"  loading model: {key}")
+
+    # Always load models (needed for /api/predict and /weights)
+    for key in MODEL_CONFIGS:
+        if key not in _MODELS:
             try:
-                m, mdim = load_model(key, MODELS_DIR, nf, PRED_LEN, ti, device)
+                m = load_model(key, MODELS_DIR, nf, PRED_LEN, ti, device)
                 _MODELS[key] = m
-                _MODEL_DIMS[key] = mdim
-                preds, trues, met = evaluate_model(
-                    m, key, test_loader, ti, PRED_LEN, scaler, device, model_dim=mdim)
-                _TEST_PREDS[key] = preds
-                _TEST_TRUES[key] = trues
-                _METRICS[key]    = met
-                print(f"    {key} MSE={met['MSE']:.4f}")
             except Exception as e:
                 print(f"  WARNING: could not load {key}: {e}")
+
+    # If no pre-computed results, evaluate now
+    if not preds_available:
+        print("[init] No pre-computed results – running evaluation…")
+        for key in MODEL_CONFIGS:
+            if key in _MODELS:
+                try:
+                    preds, trues, met = evaluate_model(
+                        _MODELS[key], key, test_loader, ti, PRED_LEN, scaler, device)
+                    _TEST_PREDS[key] = preds
+                    _TEST_TRUES[key] = trues
+                    _METRICS[key]    = met
+                    print(f"    {key} MSE={met['MSE']:.4f}")
+                except Exception as e:
+                    print(f"  WARNING: eval failed for {key}: {e}")
 
     # Learning-curve data (best-epoch info from notebook logs)
     _LC_DATA = {
         "seq2seq":   {"train": [], "val": [], "best_epoch": 2,  "best_val": 0.3154},
         "tcn":       {"train": [], "val": [], "best_epoch": 5,  "best_val": 0.1622},
     }
-
-    # Lazy-load models if not yet loaded
-    for key in MODEL_CONFIGS:
-        if key not in _MODELS:
-            try:
-                m, mdim = load_model(key, MODELS_DIR, nf, PRED_LEN, ti, device)
-                _MODELS[key] = m
-                _MODEL_DIMS[key] = mdim
-            except Exception as e:
-                print(f"  WARNING model {key} not loaded: {e}")
 
     print("[init] Done.")
 
@@ -208,10 +209,8 @@ def api_predict():
 
     _, _, test_sc, scaler, ti, _, _ = _PIPELINE
     model = _MODELS[model_key]
-    mdim = _MODEL_DIMS.get(model_key)
     pred, true = predict_sample(model, model_key, test_sc, idx,
-                                PRED_LEN, ti, scaler, device,
-                                model_dim=mdim)
+                                PRED_LEN, ti, scaler, device)
     metrics = calc_metrics(pred, true)
     chart   = plot_single_prediction(pred, true, MODEL_CONFIGS[model_key]["label"])
 
@@ -226,4 +225,4 @@ def api_predict():
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(host="0.0.0.0", port=5500, debug=True)
