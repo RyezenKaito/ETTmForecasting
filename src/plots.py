@@ -62,8 +62,8 @@ def plot_learning_curves(results: dict) -> str:
     }
     Returns base64 PNG.
     """
-    labels  = {"seq2seq": "LSTM Seq2Seq", "tcn": "TCN_v2", "attention": "BiLSTM+Attention"}
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    labels  = {"seq2seq": "LSTM Seq2Seq", "tcn": "TCN_v2"}
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     _apply_dark_style(fig, axes)
 
     for ax, (key, res) in zip(axes, results.items()):
@@ -97,11 +97,11 @@ def plot_predictions(preds: dict, trues: dict, n_show: int = 400) -> str:
     preds / trues = {"seq2seq": np.ndarray, "tcn": ..., "attention": ...}
     Shape of each array: (N, pred_len)  – first step only plotted per sample.
     """
-    labels = {"seq2seq": "LSTM Seq2Seq", "tcn": "TCN_v2", "attention": "BiLSTM+Attention"}
-    fig, axes = plt.subplots(3, 1, figsize=(18, 12), sharex=True)
+    labels = {"seq2seq": "LSTM Seq2Seq", "tcn": "TCN_v2"}
+    fig, axes = plt.subplots(2, 1, figsize=(18, 8), sharex=True)
     _apply_dark_style(fig, axes)
 
-    for ax, key in zip(axes, ["seq2seq", "tcn", "attention"]):
+    for ax, key in zip(axes, ["seq2seq", "tcn"]):
         p  = preds[key][:n_show, 0]
         t  = trues[key][:n_show, 0]
         ax.plot(t, color=PALETTE["true"],    linewidth=1.5, label="True",  alpha=0.9)
@@ -127,8 +127,8 @@ def plot_bar_comparison(metrics: dict) -> str:
     metrics = {"seq2seq": {MSE, RMSE, MAE, sMAPE%}, "tcn": ..., "attention": ...}
     """
     metric_keys  = ["MSE", "RMSE", "MAE", "sMAPE%"]
-    model_keys   = ["seq2seq", "tcn", "attention"]
-    labels       = ["LSTM Seq2Seq", "TCN_v2", "BiLSTM+Attention"]
+    model_keys   = ["seq2seq", "tcn"]
+    labels       = ["LSTM Seq2Seq", "TCN_v2"]
     colors       = [PALETTE[k] for k in model_keys]
 
     fig, axes = plt.subplots(1, 4, figsize=(20, 5))

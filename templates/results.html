@@ -27,23 +27,22 @@
         </tr>
       </thead>
       <tbody>
-        {% if metrics|length == 3 %}
-          {% set best_mse = [metrics.seq2seq.MSE, metrics.tcn.MSE, metrics.attention.MSE]|min %}
+        {% if metrics|length == 2 %}
+          {% set best_mse = [metrics.seq2seq.MSE, metrics.tcn.MSE]|min %}
         {% endif %}
         {% for key, label, color in [
             ('seq2seq','LSTM Seq2Seq','var(--accent1)'),
-            ('tcn','TCN_v2','var(--accent2)'),
-            ('attention','BiLSTM + Attention','var(--accent3)')
+            ('tcn','TCN_v2','var(--accent2)')
         ] %}
         {% if key in metrics %}
-        <tr {% if metrics|length==3 and metrics[key].MSE == best_mse %}class="row-best"{% endif %}>
+        <tr {% if metrics|length==2 and metrics[key].MSE == best_mse %}class="row-best"{% endif %}>
           <td>
             <span style="color:{{color}};font-weight:600">{{ label }}</span>
-            {% if metrics|length==3 and metrics[key].MSE == best_mse %}
+            {% if metrics|length==2 and metrics[key].MSE == best_mse %}
               <span class="badge-best" style="margin-left:.4rem">Best ⭐</span>
             {% endif %}
           </td>
-          <td {% if metrics|length==3 and metrics[key].MSE == best_mse %}class="best-val"{% endif %}
+          <td {% if metrics|length==2 and metrics[key].MSE == best_mse %}class="best-val"{% endif %}
             data-count="{{ metrics[key].MSE }}" data-decimals="4">{{ "%.4f"|format(metrics[key].MSE) }}</td>
           <td>{{ "%.4f"|format(metrics[key].RMSE) }}</td>
           <td>{{ "%.4f"|format(metrics[key].MAE) }}</td>
@@ -89,11 +88,10 @@
     <div class="section-divider"></div>
   </div>
 
-  <div class="grid-3" style="margin-bottom:2rem">
+  <div class="grid-2" style="margin-bottom:2rem">
     {% for key, label, color, best_ep, best_val in [
         ('seq2seq','LSTM Seq2Seq','var(--accent1)', lc_data.seq2seq.best_epoch, lc_data.seq2seq.best_val),
-        ('tcn','TCN_v2','var(--accent2)', lc_data.tcn.best_epoch, lc_data.tcn.best_val),
-        ('attention','BiLSTM + Attention','var(--accent3)', lc_data.attention.best_epoch, lc_data.attention.best_val)
+        ('tcn','TCN_v2','var(--accent2)', lc_data.tcn.best_epoch, lc_data.tcn.best_val)
     ] %}
     <div class="card model-card-{{ key }} fade-in">
       <h3 style="color:{{color}}">{{ label }}</h3>

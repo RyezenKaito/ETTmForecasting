@@ -100,12 +100,7 @@ def build_pipeline(csv_path: str):
             split_df[TARGET] - split_df["trend"] - split_df["seasonal"]
         ).values
 
-    # column order: OT last among originals, then time features
-    last_cols = [TARGET, "time_sin", "time_cos", "day_sin", "day_cos"]
-    cols = [c for c in train_df.columns if c not in last_cols] + last_cols
-    train_df = train_df[cols]
-    val_df   = val_df[cols]
-    test_df  = test_df[cols]
+
 
     target_index = list(train_df.columns).index(TARGET)
     n_features   = len(train_df.columns)

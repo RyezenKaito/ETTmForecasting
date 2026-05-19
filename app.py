@@ -89,7 +89,6 @@ def _init():
     _LC_DATA = {
         "seq2seq":   {"train": [], "val": [], "best_epoch": 2,  "best_val": 0.3154},
         "tcn":       {"train": [], "val": [], "best_epoch": 5,  "best_val": 0.1622},
-        "attention": {"train": [], "val": [], "best_epoch": 2,  "best_val": 0.0946},
     }
 
     # Lazy-load models if not yet loaded
@@ -140,9 +139,9 @@ def models_page():
 @app.route("/results")
 def results():
     _init()
-    bar_chart = plot_bar_comparison(_METRICS) if len(_METRICS) == 3 else None
+    bar_chart = plot_bar_comparison(_METRICS) if len(_METRICS) == 2 else None
     pred_chart = None
-    if len(_TEST_PREDS) == 3:
+    if len(_TEST_PREDS) == 2:
         pred_chart = plot_predictions(_TEST_PREDS, _TEST_TRUES)
     return render_template("results.html",
                            metrics=_METRICS,
@@ -227,4 +226,4 @@ def api_predict():
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", debug=True, port=5500)
+    app.run(debug=True, port=5000)

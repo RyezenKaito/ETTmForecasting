@@ -95,19 +95,19 @@ def evaluate_model(model, model_key, loader, target_index, pred_len,
             Yb_in     = _pad_to(Yb, model_dim) if model_dim else Yb
 
             if model_key == "tcn":
-                f_cov = Yb[:, -pred_len:, -N_COV:]     # covariates from raw data
+                f_cov = Yb[:, -pred_len:, -4:]     # TCN expects 4 covariates
                 out   = model(Xb_in, future_features=f_cov)
-            elif model_key == "attention":
-                f_cov = Yb_in[:, -pred_len:, -N_COV:]  # covariates aligned to padded dim
-                out   = model(Xb_in, y=None, future_cov=f_cov, tf_ratio=0.0)
             else:
-                out   = model(Xb_in, y_true=None, tf_ratio=0.0)
+                out   = model(Xb_in)
 
             preds.append(inverse_target(out.cpu().numpy(),    scaler, target_index))
             trues.append(inverse_target(y_true.cpu().numpy(), scaler, target_index))
 
     preds_arr = np.concatenate(preds)
     trues_arr = np.concatenate(trues)
+
+
+
     return preds_arr, trues_arr, calc_metrics(preds_arr, trues_arr)
 
 
@@ -123,12 +123,13 @@ def predict_sample(model, model_key, test_scaled, sample_idx, pred_len,
 
     with torch.no_grad():
         if model_key == "tcn":
-            out = model(Xb_in, future_features=Yb[:, :, -N_COV:])
-        elif model_key == "attention":
-            out = model(Xb_in, y=None, future_cov=Yb_in[:, :, -N_COV:], tf_ratio=0.0)
+            out = model(Xb_in, future_features=Yb[:, :, -4:])
         else:
-            out = model(Xb_in, y_true=None, tf_ratio=0.0)
+            out = model(Xb_in)
 
     pred = inverse_target(out.cpu().numpy()[0],            scaler, target_index)
     true = inverse_target(y_true_scaled.cpu().numpy()[0],  scaler, target_index)
+    
+
+    
     return pred, true

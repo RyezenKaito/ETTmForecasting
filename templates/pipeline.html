@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Pipeline – ETTm1 Demo{% endblock %}
-{% block description %}Chi tiết pipeline tiền xử lý dữ liệu ETTm1: EDA, split, time features, STL, scaling.{% endblock %}
+{% block description %}Chi tiết pipeline tiền xử lý dữ liệu ETTm1: EDA, split, time features, STL, scaling.{% endblock
+%}
 
 {% block content %}
 <div class="page">
@@ -45,8 +46,16 @@
         </div>
       </div>
 
+
       <div class="pipeline-step">
         <div class="step-num">4</div>
+        <div class="step-body">
+          <h4>STL Decomposition ⚠️</h4>
+          <p>Fit STL <strong>chỉ trên tập train</strong> → extract seasonal pattern 1 chu kỳ → apply cho val/test.</p>
+        </div>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-num">5</div>
         <div class="step-body">
           <h4>Time Features (4 features)</h4>
           <p>
@@ -57,18 +66,11 @@
       </div>
 
       <div class="pipeline-step">
-        <div class="step-num">5</div>
-        <div class="step-body">
-          <h4>STL Decomposition ⚠️</h4>
-          <p>Fit STL <strong>chỉ trên tập train</strong> → extract seasonal pattern 1 chu kỳ → apply cho val/test.</p>
-        </div>
-      </div>
-
-      <div class="pipeline-step">
         <div class="step-num">6</div>
         <div class="step-body">
           <h4>StandardScaler</h4>
-          <p>Fit <strong>chỉ trên train</strong>, transform val &amp; test. OT: mean = <strong>{{ scaler_mean }}</strong>, scale = <strong>{{ scaler_scale }}</strong>.</p>
+          <p>Fit <strong>chỉ trên train</strong>, transform val &amp; test. OT: mean = <strong>{{ scaler_mean
+              }}</strong>, scale = <strong>{{ scaler_scale }}</strong>.</p>
         </div>
       </div>
 
@@ -99,9 +101,10 @@
       <h3>📊 Features sau preprocessing</h3>
       <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.8rem">
         {% for col in columns %}
-          <span class="badge {% if col == 'OT' %}badge-orange{% elif 'sin' in col or 'cos' in col %}badge-blue{% elif col in ['trend','seasonal','residual'] %}badge-green{% else %}badge-gray{% endif %}">
-            {{ col }}
-          </span>
+        <span
+          class="badge {% if col == 'OT' %}badge-orange{% elif 'sin' in col or 'cos' in col %}badge-blue{% elif col in ['trend','seasonal','residual'] %}badge-green{% else %}badge-gray{% endif %}">
+          {{ col }}
+        </span>
         {% endfor %}
       </div>
       <p style="margin-top:1rem;color:var(--text-muted);font-size:.85rem">
@@ -113,7 +116,8 @@
     <div class="card fade-in">
       <h3>🔗 Tương quan &amp; Quyết định Drop</h3>
       <p style="color:var(--text-muted);font-size:.87rem;margin-bottom:.8rem">
-        Ma trận tương quan Pearson cho thấy MUFL và MULL có <strong style="color:var(--accent2)">tương quan &gt; 0.9</strong> với các biến HUFL, HULL → drop để tránh redundancy và multicollinearity.
+        Ma trận tương quan Pearson cho thấy MUFL và MULL có <strong style="color:var(--accent2)">tương quan &gt;
+          0.9</strong> với các biến HUFL, HULL → drop để tránh redundancy và multicollinearity.
       </p>
       <div style="display:flex;gap:1rem;flex-wrap:wrap">
         <div style="text-align:center">
@@ -137,25 +141,47 @@
   <div class="card fade-in" style="margin-bottom:2rem">
     <h3>Code: Split 60/20/20</h3>
     <div class="code-block">
-<span class="cm"># ── Split theo tỉ lệ 60/20/20 ──────────────────────────────────────</span>
-n            = <span class="fn">len</span>(df)
-train_size   = <span class="fn">int</span>(n * <span class="num">0.6</span>)   <span class="cm"># 41,808</span>
-val_size     = <span class="fn">int</span>(n * <span class="num">0.2</span>)   <span class="cm"># 13,936</span>
-test_size    = <span class="fn">int</span>(n * <span class="num">0.2</span>)   <span class="cm"># 13,936</span>
+      <span class="cm"># ── Split theo tỉ lệ 60/20/20 ──────────────────────────────────────</span>
+      <br>
+      n = <span class="fn">len</span>(df)
+      <br>
+      train_size = <span class="fn">int</span>(n * <span class="num">0.6</span>) <span class="cm"># 41,808</span>
+      <br>
+      val_size = <span class="fn">int</span>(n * <span class="num">0.2</span>) <span class="cm"># 13,936</span>
+      <br>
+      test_size = <span class="fn">int</span>(n * <span class="num">0.2</span>) <span class="cm"># 13,936</span>
+      <br>
+      <br>
+      train_df = df.iloc[:train_size].copy()
+      <br>
+      val_df = df.iloc[train_size : train_size + val_size].copy()
+      <br>
+      test_df = df.iloc[train_size + val_size :].copy()
+      <br>
+      <br>
 
-train_df = df.iloc[:train_size].copy()
-val_df   = df.iloc[train_size : train_size + val_size].copy()
-test_df  = df.iloc[train_size + val_size :].copy()
-
-<span class="cm"># ── Thêm 4 time features ──────────────────────────────────────────────</span>
-<span class="kw">def</span> <span class="fn">add_time_features</span>(dataframe):
-    idx = dataframe.index
-    t_intra = idx.hour * <span class="num">4</span> + idx.minute // <span class="num">15</span>
-    dataframe[<span class="str">'time_sin'</span>] = np.sin(<span class="num">2</span> * np.pi * t_intra / <span class="num">96</span>)
-    dataframe[<span class="str">'time_cos'</span>] = np.cos(<span class="num">2</span> * np.pi * t_intra / <span class="num">96</span>)
-    dataframe[<span class="str">'day_sin'</span>]  = np.sin(<span class="num">2</span> * np.pi * idx.dayofweek / <span class="num">7</span>)
-    dataframe[<span class="str">'day_cos'</span>]  = np.cos(<span class="num">2</span> * np.pi * idx.dayofweek / <span class="num">7</span>)
-    <span class="kw">return</span> dataframe
+      <span class="cm"># ── Thêm 4 time features ──────────────────────────────────────────────</span>
+      <br>
+      <span class="kw">def</span> <span class="fn">add_time_features</span>(dataframe):
+      <br>
+      idx = dataframe.index
+      <br>
+      t_intra = idx.hour * <span class="num">4</span> + idx.minute // <span class="num">15</span>
+      <br>
+      dataframe[<span class="str">'time_sin'</span>] = np.sin(<span class="num">2</span> * np.pi * t_intra / <span
+        class="num">96</span>)
+      <br>
+      dataframe[<span class="str">'time_cos'</span>] = np.cos(<span class="num">2</span> * np.pi * t_intra / <span
+        class="num">96</span>)
+      <br>
+      dataframe[<span class="str">'day_sin'</span>] = np.sin(<span class="num">2</span> * np.pi * idx.dayofweek / <span
+        class="num">7</span>)
+      <br>
+      dataframe[<span class="str">'day_cos'</span>] = np.cos(<span class="num">2</span> * np.pi * idx.dayofweek / <span
+        class="num">7</span>)
+      <br>
+      <span class="kw">return</span> dataframe
+      <br>
     </div>
   </div>
 
@@ -175,39 +201,59 @@ test_df  = df.iloc[train_size + val_size :].copy()
   <div class="card fade-in" style="margin-top:1.2rem;margin-bottom:2rem">
     <h3>Code: STL – fit train, apply val/test</h3>
     <div class="code-block">
-<span class="cm"># STEP 1: Fit STL chỉ trên train ───────────────────────────────────</span>
-period = <span class="num">96</span>   <span class="cm"># 15-min × 96 = 1 ngày</span>
-stl    = <span class="fn">STL</span>(train_df[<span class="str">"OT"</span>], period=period)
-res    = stl.<span class="fn">fit</span>()
-
-train_df[<span class="str">"trend"</span>]    = res.trend.values
-train_df[<span class="str">"seasonal"</span>] = res.seasonal.values
-train_df[<span class="str">"residual"</span>] = res.resid.values
-
-<span class="cm"># STEP 2: Extract 1 chu kỳ seasonal đại diện ──────────────────────</span>
-seasonal_pattern = np.<span class="fn">array</span>([
-    res.seasonal[i::period].<span class="fn">mean</span>() <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(period)
-])   <span class="cm"># shape: (96,)</span>
-
-<span class="cm"># STEP 3: Apply cho val/test ───────────────────────────────────────</span>
-<span class="kw">for</span> split_df <span class="kw">in</span> [val_df, test_df]:
-    split_df[<span class="str">"trend"</span>]    = <span class="fn">apply_trend</span>(split_df, window=period)
-    split_df[<span class="str">"seasonal"</span>] = <span class="fn">apply_seasonal</span>(split_df, seasonal_pattern)
-    split_df[<span class="str">"residual"</span>] = (split_df[<span class="str">"OT"</span>]
-                            - split_df[<span class="str">"trend"</span>]
-                            - split_df[<span class="str">"seasonal"</span>]).values
+      <span class="cm"># STEP 1: Fit STL chỉ trên train ───────────────────────────────────</span>
+      <br>
+      period = <span class="num">96</span> <span class="cm"># 15-min × 96 = 1 ngày</span>
+      <br>
+      stl = <span class="fn">STL</span>(train_df[<span class="str">"OT"</span>], period=period)
+      <br>
+      res = stl.<span class="fn">fit</span>()
+      <br>
+      <br>
+      train_df[<span class="str">"trend"</span>] = res.trend.values
+      <br>
+      train_df[<span class="str">"seasonal"</span>] = res.seasonal.values
+      <br>
+      train_df[<span class="str">"residual"</span>] = res.resid.values
+      <br>
+      <br>
+      <span class="cm"># STEP 2: Extract 1 chu kỳ seasonal đại diện ──────────────────────</span>
+      <br>
+      seasonal_pattern = np.<span class="fn">array</span>([
+      <br>
+      res.seasonal[i::period].<span class="fn">mean</span>() <span class="kw">for</span> i <span class="kw">in</span>
+      <br>
+      <span class="fn">range</span>(period)
+      ]) <span class="cm"># shape: (96,)</span>
+      <br>
+      <br>
+      <span class="cm"># STEP 3: Apply cho val/test ───────────────────────────────────────</span>
+      <br>
+      <span class="kw">for</span> split_df <span class="kw">in</span> [val_df, test_df]:
+      <br>
+      split_df[<span class="str">"trend"</span>] = <span class="fn">apply_trend</span>(split_df, window=period)
+      <br>
+      split_df[<span class="str">"seasonal"</span>] = <span class="fn">apply_seasonal</span>(split_df, seasonal_pattern)
+      <br>
+      split_df[<span class="str">"residual"</span>] = (split_df[<span class="str">"OT"</span>]
+      - split_df[<span class="str">"trend"</span>]
+      - split_df[<span class="str">"seasonal"</span>]).values
     </div>
     <div class="grid-2" style="margin-top:1.2rem">
-      <div style="background:rgba(231,76,60,.07);border:1px solid rgba(231,76,60,.25);border-radius:var(--radius-sm);padding:1rem">
+      <div
+        style="background:rgba(231,76,60,.07);border:1px solid rgba(231,76,60,.25);border-radius:var(--radius-sm);padding:1rem">
         <strong style="color:var(--danger)">❌ Cách sai (Naive)</strong>
         <p style="font-size:.85rem;color:var(--text-muted);margin-top:.4rem">
-          Fit STL trên <em>toàn bộ</em> df → val/test "thấy" thông tin tương lai → data leakage → metrics giả tạo tốt hơn thực tế.
+          Fit STL trên <em>toàn bộ</em> df → val/test "thấy" thông tin tương lai → data leakage → metrics giả tạo tốt
+          hơn thực tế.
         </p>
       </div>
-      <div style="background:rgba(92,184,92,.07);border:1px solid rgba(92,184,92,.25);border-radius:var(--radius-sm);padding:1rem">
+      <div
+        style="background:rgba(92,184,92,.07);border:1px solid rgba(92,184,92,.25);border-radius:var(--radius-sm);padding:1rem">
         <strong style="color:var(--accent3)">✅ Cách đúng</strong>
         <p style="font-size:.85rem;color:var(--text-muted);margin-top:.4rem">
-          Fit STL <em>chỉ trên train</em>, extract seasonal pattern, tile theo phase thực tế cho val/test → không có data leakage.
+          Fit STL <em>chỉ trên train</em>, extract seasonal pattern, tile theo phase thực tế cho val/test → không có
+          data leakage.
         </p>
       </div>
     </div>
@@ -223,10 +269,10 @@ seasonal_pattern = np.<span class="fn">array</span>([
     <div class="card fade-in">
       <h3>StandardScaler</h3>
       <div class="code-block" style="font-size:.8rem">
-scaler       = <span class="fn">StandardScaler</span>()
-train_scaled = scaler.<span class="fn">fit_transform</span>(train_df.values)
-val_scaled   = scaler.<span class="fn">transform</span>(val_df.values)
-test_scaled  = scaler.<span class="fn">transform</span>(test_df.values)
+        scaler = <span class="fn">StandardScaler</span>()
+        train_scaled = scaler.<span class="fn">fit_transform</span>(train_df.values)
+        val_scaled = scaler.<span class="fn">transform</span>(val_df.values)
+        test_scaled = scaler.<span class="fn">transform</span>(test_df.values)
       </div>
       <p style="margin-top:.8rem;font-size:.85rem;color:var(--text-muted)">
         OT mean = <strong style="color:var(--text)">{{ scaler_mean }}</strong> °C &nbsp;·&nbsp;

@@ -54,7 +54,7 @@
     <h2>Ba Mô Hình</h2>
     <div class="section-divider"></div>
   </div>
-  <div class="grid-3" style="margin-bottom:2.5rem">
+  <div class="grid-2" style="margin-bottom:2.5rem">
 
     <div class="card model-card-seq2seq fade-in">
       <div style="display:flex;justify-content:space-between;align-items:start">
@@ -97,31 +97,10 @@
       {% endif %}
       <a href="/models#tcn" class="btn btn-ghost" style="margin-top:1rem;font-size:.82rem;padding:.4rem 1rem">Chi tiết →</a>
     </div>
-
-    <div class="card model-card-attention fade-in" style="position:relative">
-      <div style="display:flex;justify-content:space-between;align-items:start">
-        <h3>BiLSTM + Attention</h3>
-        <span class="badge badge-attention">Best ⭐</span>
-      </div>
-      <p style="color:var(--text-muted);font-size:.87rem;margin:.6rem 0 1rem">
-        BiLSTM Encoder + Scaled Dot-Product Attention + Future covariates. Model tốt nhất.
-      </p>
-      {% if metrics and 'attention' in metrics %}
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
-        <div><span style="color:var(--text-muted);font-size:.78rem">MSE</span>
-          <p style="font-weight:700;color:var(--accent3)">{{ "%.4f"|format(metrics.attention.MSE) }}</p></div>
-        <div><span style="color:var(--text-muted);font-size:.78rem">MAE</span>
-          <p style="font-weight:700;color:var(--accent3)">{{ "%.4f"|format(metrics.attention.MAE) }}</p></div>
-      </div>
-      {% else %}
-      <p style="color:var(--text-muted);font-size:.85rem">Chưa có kết quả</p>
-      {% endif %}
-      <a href="/models#attention" class="btn btn-ghost" style="margin-top:1rem;font-size:.82rem;padding:.4rem 1rem">Chi tiết →</a>
-    </div>
   </div>
 
   <!-- Quick metrics summary table -->
-  {% if metrics and metrics|length == 3 %}
+  {% if metrics and metrics|length == 2 %}
   <div class="section-header">
     <h2>Bảng So Sánh Nhanh</h2>
     <div class="section-divider"></div>
@@ -138,8 +117,8 @@
         </tr>
       </thead>
       <tbody>
-        {% set best_mse = [metrics.seq2seq.MSE, metrics.tcn.MSE, metrics.attention.MSE]|min %}
-        {% for key, label, color in [('seq2seq','LSTM Seq2Seq','var(--accent1)'),('tcn','TCN_v2','var(--accent2)'),('attention','BiLSTM + Attention','var(--accent3)')] %}
+        {% set best_mse = [metrics.seq2seq.MSE, metrics.tcn.MSE]|min %}
+        {% for key, label, color in [('seq2seq','LSTM Seq2Seq','var(--accent1)'),('tcn','TCN_v2','var(--accent2)')] %}
         <tr {% if metrics[key].MSE == best_mse %}class="row-best"{% endif %}>
           <td><span style="color:{{color}};font-weight:600">{{ label }}</span>
             {% if metrics[key].MSE == best_mse %}<span class="badge-best">Best ⭐</span>{% endif %}

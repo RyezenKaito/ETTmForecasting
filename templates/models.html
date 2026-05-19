@@ -13,7 +13,6 @@
     <div class="tabs">
       <button class="tab-btn active" data-target="tab-seq2seq">① LSTM Seq2Seq</button>
       <button class="tab-btn" data-target="tab-tcn">② TCN_v2</button>
-      <button class="tab-btn" data-target="tab-attention">③ BiLSTM + Attention ⭐</button>
     </div>
 
     <!-- ── Tab 1: LSTM Seq2Seq Baseline ────────────────────────────────── -->
@@ -37,40 +36,9 @@
         </div>
         <div class="card">
           <h3>Sơ đồ kiến trúc</h3>
-          <div class="arch-diagram">
-<strong style="color:var(--accent1)">INPUT</strong>
-x_enc: <span class="arch-node arch-node-blue">[B, 336, {{ n_features }}]</span>
-       ↓
-<strong style="color:var(--accent1)">ENCODER LSTM</strong>  (2 layers, hidden=128)
-       → h, c  <span class="arch-node arch-node-gray" style="background:rgba(255,255,255,.07);">[2, B, 128]</span>
-       ↓
-<strong style="color:var(--accent1)">DECODER LSTM</strong>  (autoregressive, 24 steps)
-  step t:  dec_in <span class="arch-node arch-node-orange">[B,1,1]</span>  → LSTM → <span class="arch-node arch-node-gold">pred_t [B,1]</span>
-  (teacher forcing: use y_true or pred_t-1)
-       ↓
-<strong style="color:var(--accent1)">OUTPUT</strong>: <span class="arch-node arch-node-orange">[B, 24]</span>  (24 bước dự báo)
+          <div style="margin-top:1rem; text-align:center;">
+            <img src="{{ url_for('static', filename='lstm_seq2seq_architecture.svg') }}" style="max-width:100%; height:auto; border-radius:8px;" alt="LSTM Architecture">
           </div>
-        </div>
-      </div>
-
-      <div class="card fade-in">
-        <h3>Forward pass code</h3>
-        <div class="code-block">
-<span class="kw">def</span> <span class="fn">forward</span>(self, x_enc, y_true=<span class="kw">None</span>, tf_ratio=<span class="num">0.0</span>):
-    _, (h, c) = self.encoder(x_enc)          <span class="cm"># encode</span>
-    dec_input = x_enc[:, -<span class="num">1</span>, self.target_index].<span class="fn">unsqueeze</span>(<span class="num">1</span>).<span class="fn">unsqueeze</span>(<span class="num">2</span>)
-
-    predictions = []
-    <span class="kw">for</span> t <span class="kw">in</span> <span class="fn">range</span>(self.pred_len):
-        dec_output, (h, c) = self.decoder(dec_input, (h, c))
-        pred = self.fc_out(self.dropout(dec_output[:, -<span class="num">1</span>, :]))
-        predictions.<span class="fn">append</span>(pred)
-        <span class="cm"># teacher forcing</span>
-        <span class="kw">if</span> y_true <span class="kw">is not None</span> <span class="kw">and</span> random.<span class="fn">random</span>() &lt; tf_ratio:
-            dec_input = y_true[:, t].<span class="fn">unsqueeze</span>(<span class="num">1</span>).<span class="fn">unsqueeze</span>(<span class="num">2</span>)
-        <span class="kw">else</span>:
-            dec_input = pred.<span class="fn">detach</span>().<span class="fn">unsqueeze</span>(<span class="num">1</span>)
-    <span class="kw">return</span> torch.<span class="fn">cat</span>(predictions, dim=<span class="num">1</span>)   <span class="cm"># [B, 24]</span>
         </div>
       </div>
     </div>
@@ -96,23 +64,8 @@ x_enc: <span class="arch-node arch-node-blue">[B, 336, {{ n_features }}]</span>
         </div>
         <div class="card">
           <h3>Sơ đồ kiến trúc</h3>
-          <div class="arch-diagram">
-<strong style="color:var(--accent2)">INPUT</strong>
-x: <span class="arch-node arch-node-orange">[B, 336, {{ n_features }}]</span>  →  permute  →  <span class="arch-node arch-node-orange">[B, {{ n_features }}, 336]</span>
-   ↓
-<strong style="color:var(--accent2)">TEMPORAL BLOCKS</strong>  ×5
-  Block 1: in={{ n_features }}, out=32,  dilation=1,  RF=13
-  Block 2: in=32,  out=64,  dilation=2,  RF=25
-  Block 3: in=64,  out=128, dilation=4,  RF=49
-  Block 4: in=128, out=128, dilation=8,  RF=97
-  Block 5: in=128, out=256, dilation=16, RF=193  →  <strong>RF total=373</strong>
-  (each: LayerNorm → Conv1d → GELU → Dropout + residual)
-   ↓ last timestep
-<span class="arch-node arch-node-orange">[B, 256]</span>   concat   future_cov_proj <span class="arch-node arch-node-blue">[B, 64]</span>
-   ↓
-<strong style="color:var(--accent2)">FC HEAD</strong>: LayerNorm → Linear(320,128) → GELU → Linear(128,24)
-   ↓
-<strong style="color:var(--accent2)">OUTPUT</strong>: <span class="arch-node arch-node-orange">[B, 24]</span>
+          <div style="margin-top:1rem; text-align:center;">
+            <img src="{{ url_for('static', filename='tcn_v2_architecture.svg') }}" style="max-width:100%; height:auto; border-radius:8px;" alt="TCN Architecture">
           </div>
         </div>
       </div>
@@ -128,67 +81,7 @@ RF = 1 + 2 * (kernel_size - 1) * sum(dilations)
       </div>
     </div>
 
-    <!-- ── Tab 3: BiLSTM + Attention ─────────────────────────────────── -->
-    <div id="tab-attention" class="tab-panel fade-in">
-      <div class="grid-2" style="margin-bottom:1.4rem">
-        <div class="card model-card-attention">
-          <h3>Tổng quan <span class="badge-best">Best ⭐</span></h3>
-          <p style="color:var(--text-muted);font-size:.88rem;margin:.6rem 0 1rem">
-            Model mạnh nhất. BiLSTM Encoder để capture ngữ cảnh 2 chiều,
-            Scaled Dot-Product Attention để decoder "nhìn" vào toàn bộ lịch sử,
-            Future Covariates inject vào decoder.
-          </p>
-          <table style="font-size:.85rem;width:100%;border-collapse:collapse">
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Encoder</td><td>BiLSTM 2 layers, hidden=256 (×2=512 total)</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Decoder</td><td>LSTM 2 layers, input=512+5</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Attention</td><td style="color:var(--accent3)">✅ Scaled Dot-Product</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Future Cov</td><td style="color:var(--accent3)">✅ time_sin/cos, day_sin/cos</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Teacher Forcing</td><td>Decay 0.60 → 0.10 over epochs</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Dropout</td><td>0.2</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Optimizer</td><td>AdamW lr=1e-4, wd=1e-3</td></tr>
-          </table>
-        </div>
-        <div class="card">
-          <h3>Sơ đồ kiến trúc</h3>
-          <div class="arch-diagram">
-<strong style="color:var(--accent3)">INPUT</strong>
-x: <span class="arch-node arch-node-green">[B, 336, {{ n_features }}]</span>
-   ↓
-<strong style="color:var(--accent3)">BILSTM ENCODER</strong>  (2 layers, hidden=256, bidirectional)
-   enc_out: <span class="arch-node arch-node-green">[B, 336, 512]</span>   h,c: <span class="arch-node arch-node-green">[2, B, 512]</span>
-   ↓                                          ↓
-<strong style="color:var(--accent3)">DECODER</strong>  ×24 steps:                         context
-  dec_in = [OT_prev(1) + future_cov(4)] = <span class="arch-node arch-node-blue">[B, 5]</span>
-  ctx = <strong>Attention</strong>(h_last, enc_out) → <span class="arch-node arch-node-gold">[B, 512]</span>
-  inp = cat(dec_in, ctx) → LSTM → FC → <span class="arch-node arch-node-gold">pred_t</span>
-   ↓
-<strong style="color:var(--accent3)">OUTPUT</strong>: <span class="arch-node arch-node-green">[B, 24]</span>
-          </div>
-        </div>
-      </div>
 
-      <div class="card fade-in">
-        <h3>Attention Mechanism – Scaled Dot-Product</h3>
-        <div class="code-block">
-<span class="kw">class</span> <span class="fn">S2SAttention</span>(nn.Module):
-    <span class="kw">def</span> <span class="fn">__init__</span>(self, hidden):
-        self.scale = (hidden * <span class="num">2</span>) ** -<span class="num">0.5</span>   <span class="cm"># 1/√(512)</span>
-
-    <span class="kw">def</span> <span class="fn">forward</span>(self, h_last, enc_out):
-        <span class="cm"># h_last: [B, 512]   enc_out: [B, 336, 512]</span>
-        q = h_last.<span class="fn">unsqueeze</span>(<span class="num">1</span>)                    <span class="cm"># [B, 1, 512]</span>
-        w = torch.<span class="fn">softmax</span>(
-            torch.<span class="fn">bmm</span>(q, enc_out.<span class="fn">transpose</span>(<span class="num">1</span>,<span class="num">2</span>)) * self.scale,
-            dim=-<span class="num">1</span>)                                  <span class="cm"># [B, 1, 336]</span>
-        <span class="kw">return</span> torch.<span class="fn">bmm</span>(w, enc_out).<span class="fn">squeeze</span>(<span class="num">1</span>)  <span class="cm"># [B, 512]</span>
-        </div>
-        <div class="callout info" style="margin-top:1rem">
-          <strong>Ý nghĩa:</strong>
-          Ở mỗi decode step, attention weight <code>w[t,s]</code> cho biết model "chú ý"
-          bao nhiêu vào timestep <code>s</code> của lịch sử (336 bước) khi dự báo bước <code>t</code>.
-        </div>
-      </div>
-    </div>
   </div>
 
 </div>
