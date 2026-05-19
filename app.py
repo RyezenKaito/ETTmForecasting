@@ -30,7 +30,7 @@ app = Flask(__name__)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ── global state (loaded once at startup) ─────────────────────────────────────
-_PIPELINE   = None   # (train_sc, val_sc, test_sc, scaler, ti, nf, sp, train_df)
+_PIPELINE   = None   # (train_sc, val_sc, test_sc, scaler, ti, nf, train_df)
 _MODELS     = {}     # {key: model}
 _MODEL_DIMS = {}     # {key: actual_input_dim detected from checkpoint}
 _TEST_DS    = None
@@ -48,8 +48,8 @@ def _init():
 
     print("[init] Building data pipeline…")
     (train_sc, val_sc, test_sc,
-     scaler, ti, nf, sp, train_df) = build_pipeline(DATA_PATH)
-    _PIPELINE = (train_sc, val_sc, test_sc, scaler, ti, nf, sp, train_df)
+     scaler, ti, nf, train_df) = build_pipeline(DATA_PATH)
+    _PIPELINE = (train_sc, val_sc, test_sc, scaler, ti, nf, train_df)
 
     _TEST_DS = TimeSeriesDataset(test_sc, SEQ_LEN, LABEL_LEN, PRED_LEN)
     test_loader = DataLoader(_TEST_DS, batch_size=64, shuffle=False)
@@ -118,7 +118,7 @@ def index():
 @app.route("/pipeline")
 def pipeline():
     _init()
-    _, _, _, scaler, ti, nf, _, train_df = _PIPELINE
+    _, _, _, scaler, ti, nf, train_df = _PIPELINE
     return render_template("pipeline.html",
                            columns=list(train_df.columns),
                            n_features=nf,
@@ -130,7 +130,7 @@ def pipeline():
 @app.route("/models")
 def models_page():
     _init()
-    _, _, _, _, _, nf, _, _ = _PIPELINE
+    _, _, _, _, _, nf, _ = _PIPELINE
     return render_template("models.html",
                            n_features=nf,
                            model_configs=MODEL_CONFIGS)
@@ -153,7 +153,7 @@ def results():
 @app.route("/visualize")
 def visualize():
     _init()
-    _, _, test_sc, _, _, _, _, _ = _PIPELINE
+    _, _, test_sc, _, _, _, _ = _PIPELINE
     n_samples = max(0, len(test_sc) - SEQ_LEN - PRED_LEN)
     return render_template("visualize.html",
                            n_samples=n_samples,
@@ -206,7 +206,7 @@ def api_predict():
     if model_key not in _MODELS:
         return jsonify({"error": f"Model '{model_key}' not available"}), 400
 
-    _, _, test_sc, scaler, ti, _, _, _ = _PIPELINE
+    _, _, test_sc, scaler, ti, _, _ = _PIPELINE
     model = _MODELS[model_key]
     mdim = _MODEL_DIMS.get(model_key)
     pred, true = predict_sample(model, model_key, test_sc, idx,
