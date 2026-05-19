@@ -56,7 +56,6 @@ def build_pipeline(csv_path: str):
         scaler            – fitted StandardScaler
         target_index      – int
         n_features        – int
-        seasonal_pattern  – None (giữ chữ ký hàm)
         train_df          – pd.DataFrame (column order reference)
     """
     df = pd.read_csv(csv_path)
@@ -97,9 +96,8 @@ def build_pipeline(csv_path: str):
     val_scaled   = scaler.transform(val_df.values)
     test_scaled  = scaler.transform(test_df.values)
 
-    seasonal_pattern = None
     return (
         train_scaled, val_scaled, test_scaled,
         scaler, target_index, n_features,
-        seasonal_pattern, train_df
+        train_df
     )
