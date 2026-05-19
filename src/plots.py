@@ -25,7 +25,7 @@ PALETTE = {
     "seq2seq":   "#4C9BE8",
     "tcn":       "#F4845F",
     "attention": "#5CB85C",
-    "true":      "#2C3E50",
+    "true":      "#FFFFFF", # Changed to white for better visibility
     "grid":      "#ECF0F1",
     "bg":        "#1A1A2E",
     "panel":     "#16213E",
@@ -104,8 +104,8 @@ def plot_predictions(preds: dict, trues: dict, n_show: int = 400) -> str:
     for ax, key in zip(axes, ["seq2seq", "tcn"]):
         p  = preds[key][:n_show, 0]
         t  = trues[key][:n_show, 0]
-        ax.plot(t, color=PALETTE["true"],    linewidth=1.5, label="True",  alpha=0.9)
-        ax.plot(p, color=PALETTE[key],       linewidth=1.2, label=labels[key], alpha=0.8)
+        ax.plot(t, color=PALETTE["true"],    linewidth=1.8, label="Ground Truth",  alpha=1.0)
+        ax.plot(p, color=PALETTE[key],       linewidth=1.5, label=f"{labels[key]} Pred", alpha=0.85)
         mse = float(np.mean((p - t) ** 2))
         ax.set_title(f"{labels[key]} | MSE={mse:.4f} °C²",
                      fontsize=12, fontweight="bold")
@@ -155,19 +155,24 @@ def plot_bar_comparison(metrics: dict) -> str:
 # Interactive single-window prediction chart
 # ─────────────────────────────────────────────────────────────────────────────
 
-def plot_single_prediction(pred: np.ndarray, true: np.ndarray,
-                           model_label: str) -> str:
-    steps = np.arange(1, len(pred) + 1)
-    fig, ax = plt.subplots(figsize=(10, 4))
+def plot_multi_prediction(preds: dict, true: np.ndarray,
+                           model_labels: dict) -> str:
+    steps = np.arange(1, len(true) + 1)
+    fig, ax = plt.subplots(figsize=(10, 5))
     _apply_dark_style(fig, [ax])
     ax.plot(steps, true, color=PALETTE["true"], linewidth=2.5, marker="o",
             markersize=4, label="Ground Truth")
-    ax.plot(steps, pred, color="#E74C3C",       linewidth=2.2, marker="s",
-            markersize=4, linestyle="--", label=f"{model_label} Pred")
+    
+    for key, pred in preds.items():
+        # use specific markers for each model to distinguish them
+        marker = "s" if key == "seq2seq" else "^"
+        ax.plot(steps, pred, color=PALETTE[key], linewidth=2.2, marker=marker,
+                markersize=5, linestyle="--", label=f"{model_labels[key]} Pred")
+
     ax.set_xlabel("Forecast Step (15-min intervals)")
     ax.set_ylabel("OT (°C)")
-    ax.set_title(f"{model_label} – 24-step Forecast", fontsize=13, fontweight="bold")
-    ax.legend(fontsize=10, framealpha=0.3,
+    ax.set_title("All Models – 24-step Forecast", fontsize=13, fontweight="bold")
+    ax.legend(fontsize=10, framealpha=0.4,
               labelcolor=PALETTE["text"], facecolor=PALETTE["panel"])
     plt.tight_layout()
     return _fig_to_b64(fig)

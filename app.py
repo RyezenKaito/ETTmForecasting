@@ -16,7 +16,7 @@ from src.metrics import inverse_target, calc_metrics
 from src.inference import (TimeSeriesDataset, load_model,
                             evaluate_model, predict_sample)
 from src.plots import (plot_learning_curves, plot_predictions,
-                       plot_bar_comparison, plot_single_prediction)
+                       plot_bar_comparison, plot_multi_prediction)
 from torch.utils.data import DataLoader
 
 # ── paths ─────────────────────────────────────────────────────────────────────
@@ -201,23 +201,37 @@ def api_metrics():
 def api_predict():
     _init()
     body      = request.get_json(force=True)
-    model_key = body.get("model", "tcn")
     idx       = int(body.get("index", 0))
 
-    if model_key not in _MODELS:
-        return jsonify({"error": f"Model '{model_key}' not available"}), 400
-
     _, _, test_sc, scaler, ti, _, _ = _PIPELINE
-    model = _MODELS[model_key]
-    pred, true = predict_sample(model, model_key, test_sc, idx,
-                                PRED_LEN, ti, scaler, device)
-    metrics = calc_metrics(pred, true)
-    chart   = plot_single_prediction(pred, true, MODEL_CONFIGS[model_key]["label"])
+    
+    all_preds = {}
+    all_metrics = {}
+    model_labels = {}
+    
+    true_vals = None
+    
+    for key, model in _MODELS.items():
+        pred, true = predict_sample(model, key, test_sc, idx,
+                                    PRED_LEN, ti, scaler, device)
+        all_preds[key] = pred
+        all_metrics[key] = calc_metrics(pred, true)
+        model_labels[key] = MODEL_CONFIGS[key]["label"]
+        if true_vals is None:
+            true_vals = true
+
+    if not all_preds:
+        return jsonify({"error": "No models available"}), 400
+
+    chart = plot_multi_prediction(all_preds, true_vals, model_labels)
+
+    # Convert arrays to list for JSON
+    preds_json = {k: v.tolist() for k, v in all_preds.items()}
 
     return jsonify({
-        "pred":    pred.tolist(),
-        "true":    true.tolist(),
-        "metrics": metrics,
+        "preds":   preds_json,
+        "true":    true_vals.tolist(),
+        "metrics": all_metrics,
         "chart":   chart,
     })
 

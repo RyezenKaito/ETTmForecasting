@@ -1,28 +1,20 @@
+<!-- (Replaced visualize.html to handle multi-model predictions) -->
 {% extends "base.html" %}
 {% block title %}Visualize – ETTm1 Demo{% endblock %}
-{% block description %}Interactive demo: chọn model và sample, xem dự báo 24 bước real-time.{% endblock %}
+{% block description %}Interactive demo: chọn sample, xem dự báo 24 bước real-time của tất cả model.{% endblock %}
 
 {% block content %}
 <div class="page">
 
   <h1 class="page-title fade-in">🎯 Interactive Demo</h1>
   <p class="page-sub fade-in">
-    Chọn model và sample index trong test set để xem dự báo 24 bước (6 giờ) real-time.
+    Chọn sample index trong test set để xem dự báo 24 bước (6 giờ) real-time của tất cả các model.
     Test set có <strong>{{ n_samples }}</strong> sample windows.
   </p>
 
   <!-- Controls -->
   <div class="card fade-in" style="margin-bottom:1.6rem">
     <div class="viz-controls">
-
-      <div>
-        <label>🤖 Model</label><br>
-        <select id="modelSelect" style="margin-top:.4rem">
-          {% for key in model_keys %}
-          <option value="{{ key }}">{{ model_labels[key] }}</option>
-          {% endfor %}
-        </select>
-      </div>
 
       <div style="flex:1;min-width:200px">
         <label>📍 Sample Index: <strong id="idxLabel">0</strong> / {{ n_samples - 1 }}</label>
@@ -31,27 +23,101 @@
       </div>
 
       <button class="btn btn-primary" id="runBtn">
-        ▶ Predict
+        ▶ Predict All Models
       </button>
 
     </div>
   </div>
 
   <!-- Chart output -->
-  <div class="card fade-in" style="margin-bottom:1.6rem;min-height:320px">
-    <div id="spinner" class="spinner" style="display:none"></div>
+  <div class="card fade-in" style="margin-bottom:1.6rem;min-height:320px;text-align:center">
+    <div id="spinner" class="spinner" style="display:none;margin: 0 auto;"></div>
     <div id="chartContainer"></div>
   </div>
 
   <!-- Metrics output -->
-  <div id="metricsContainer"></div>
+  <div id="metricsContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;"></div>
 
   <!-- Info -->
   <div class="callout info fade-in" style="margin-top:1.6rem">
     <strong>ℹ️ Cách hoạt động:</strong>
-    API <code>POST /api/predict</code> nhận model và index → load model weights → run inference
-    → trả về prediction, ground-truth và chart (base64 PNG). Không cần GPU khi demo.
+    API <code>POST /api/predict</code> nhận index → load weights của các model → run inference
+    → trả về prediction, ground-truth và chart gộp (base64 PNG). Không cần GPU khi demo.
   </div>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const slider = document.getElementById("idxSlider");
+    const label = document.getElementById("idxLabel");
+    const btn = document.getElementById("runBtn");
+    const chartDiv = document.getElementById("chartContainer");
+    const metricsDiv = document.getElementById("metricsContainer");
+    const spinner = document.getElementById("spinner");
+
+    slider.addEventListener("input", (e) => {
+        label.textContent = e.target.value;
+    });
+
+    async function runPrediction() {
+        const idx = slider.value;
+        chartDiv.innerHTML = "";
+        metricsDiv.innerHTML = "";
+        spinner.style.display = "block";
+        btn.disabled = true;
+
+        try {
+            const res = await fetch("/api/predict", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ index: idx })
+            });
+            const data = await res.json();
+
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+
+            // Show Chart
+            const img = document.createElement("img");
+            img.src = "data:image/png;base64," + data.chart;
+            img.style.maxWidth = "100%";
+            img.style.borderRadius = "8px";
+            chartDiv.appendChild(img);
+
+            // Show Metrics for each model
+            let metricsHtml = "";
+            for (const [modelKey, met] of Object.entries(data.metrics)) {
+                let color = modelKey === "seq2seq" ? "var(--accent1)" : "var(--accent2)";
+                let name = modelKey === "seq2seq" ? "LSTM Seq2Seq" : "TCN_v2";
+                
+                metricsHtml += `
+                <div class="card fade-in" style="border-top: 3px solid ${color}">
+                    <h3 style="color:${color}; margin-top:0">${name}</h3>
+                    <table class="metric-table" style="margin-top:1rem">
+                        <tr><td>MSE</td><td style="font-weight:600">${met.MSE.toFixed(4)}</td></tr>
+                        <tr><td>RMSE</td><td>${met.RMSE.toFixed(4)}</td></tr>
+                        <tr><td>MAE</td><td>${met.MAE.toFixed(4)}</td></tr>
+                    </table>
+                </div>
+                `;
+            }
+            metricsDiv.innerHTML = metricsHtml;
+
+        } catch (err) {
+            console.error(err);
+            alert("Lỗi kết nối tới server.");
+        } finally {
+            spinner.style.display = "none";
+            btn.disabled = false;
+        }
+    }
+
+    btn.addEventListener("click", runPrediction);
+});
+</script>
 {% endblock %}
