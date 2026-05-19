@@ -29,7 +29,7 @@ print(f"Device: {device}")
 
 print("Building pipeline...")
 (train_sc, val_sc, test_sc,
- scaler, ti, nf, sp, train_df) = build_pipeline(DATA_PATH)
+ scaler, ti, nf, train_df) = build_pipeline(DATA_PATH)
 
 test_ds = TimeSeriesDataset(test_sc, SEQ_LEN, LABEL_LEN, PRED_LEN)
 test_loader = DataLoader(test_ds, batch_size=64, shuffle=False)

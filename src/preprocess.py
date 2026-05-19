@@ -1,13 +1,13 @@
 """
-Data preprocessing pipeline – theo file PhanPhungVu (pipeline thật).
+Data preprocessing pipeline – theo file PhanPhungVu.
 Bước:
-  1. Load ETTm1.csv, set index date
-  2. Drop MUFL, MULL (nếu tồn tại)
-  3. Split 60/20/20
-  4. add_time_features (time_sin/cos + day_sin/cos)
-  5. STL – fit CHỈ trên train, apply seasonal pattern cho val/test
-  6. StandardScaler – fit CHỈ trên train
-  7. Trả về train/val/test scaled arrays + meta
+  - Load ETTm1.csv, set index date
+  - Drop MUFL, MULL (nếu tồn tại)
+  - STL – fit trên toàn bộ df (đúng như notebook gốc)
+  - Split 60/20/20
+  - add_time_features (time_sin/cos + day_sin/cos) → luôn ở cuối
+  - StandardScaler – fit CHỈ trên train
+  - Trả về train/val/test scaled arrays + meta
 """
 
 import numpy as np
@@ -22,6 +22,7 @@ PRED_LEN  = 24
 N_COV     = 4          # time_sin, time_cos, day_sin, day_cos
 TARGET    = "OT"
 PERIOD    = 96         # 15-min × 96 = 1 day
+TIME_COLS = ["time_sin", "time_cos", "day_sin", "day_cos"]
 
 
 # ---------- helpers ----------
@@ -37,15 +38,13 @@ def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _apply_seasonal(df: pd.DataFrame, pattern: np.ndarray) -> np.ndarray:
-    n = len(df)
-    start_offset = (df.index[0].hour * 4 + df.index[0].minute // 15) % PERIOD
-    idx = [(start_offset + i) % PERIOD for i in range(n)]
-    return np.array([pattern[i] for i in idx])
-
-
-def _apply_trend(df: pd.DataFrame, window: int = PERIOD) -> np.ndarray:
-    return df[TARGET].rolling(window=window, min_periods=1).mean().values
+def _reorder_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep time features as the last 4 columns for TCN covariates."""
+    missing = [c for c in TIME_COLS if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing time features: {missing}")
+    cols = [c for c in df.columns if c not in TIME_COLS] + TIME_COLS
+    return df[cols]
 
 
 # ---------- main pipeline ----------
@@ -57,7 +56,6 @@ def build_pipeline(csv_path: str):
         scaler            – fitted StandardScaler
         target_index      – int
         n_features        – int
-        seasonal_pattern  – np.ndarray  (shape: (PERIOD,))
         train_df          – pd.DataFrame (column order reference)
     """
     df = pd.read_csv(csv_path)
@@ -67,6 +65,13 @@ def build_pipeline(csv_path: str):
         if col in df.columns:
             df.drop(col, axis=1, inplace=True)
 
+    # STL – fit on full df (match notebook)
+    stl = STL(df[TARGET], period=PERIOD)
+    res = stl.fit()
+    df["trend"]    = res.trend.values
+    df["seasonal"] = res.seasonal.values
+    df["residual"] = res.resid.values
+
     n          = len(df)
     train_size = int(n * 0.6)
     val_size   = int(n * 0.2)
@@ -75,31 +80,11 @@ def build_pipeline(csv_path: str):
     val_df   = df.iloc[train_size: train_size + val_size].copy()
     test_df  = df.iloc[train_size + val_size:].copy()
 
-    # time features
-    for split in [train_df, val_df, test_df]:
-        split = add_time_features(split)
-    train_df = add_time_features(train_df)
-    val_df   = add_time_features(val_df)
-    test_df  = add_time_features(test_df)
-
-    # STL – fit only on train
-    stl = STL(train_df[TARGET], period=PERIOD)
-    res = stl.fit()
-    train_df["trend"]    = res.trend.values
-    train_df["seasonal"] = res.seasonal.values
-    train_df["residual"] = res.resid.values
-
-    seasonal_pattern = np.array([
-        res.seasonal[i::PERIOD].mean() for i in range(PERIOD)
-    ])
-
-    for split_df in [val_df, test_df]:
-        split_df["trend"]    = _apply_trend(split_df, window=PERIOD)
-        split_df["seasonal"] = _apply_seasonal(split_df, seasonal_pattern)
-        split_df["residual"] = (
-            split_df[TARGET] - split_df["trend"] - split_df["seasonal"]
-        ).values
-
+    # time features (append last)
+    splits = [train_df, val_df, test_df]
+    splits = [add_time_features(split) for split in splits]
+    splits = [_reorder_time_features(split) for split in splits]
+    train_df, val_df, test_df = splits
 
 
     target_index = list(train_df.columns).index(TARGET)
@@ -114,5 +99,5 @@ def build_pipeline(csv_path: str):
     return (
         train_scaled, val_scaled, test_scaled,
         scaler, target_index, n_features,
-        seasonal_pattern, train_df
+        train_df
     )
