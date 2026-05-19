@@ -4,8 +4,8 @@ Bước:
   1. Load ETTm1.csv, set index date
   2. Drop MUFL, MULL (nếu tồn tại)
   3. Split 60/20/20
-  4. add_time_features (time_sin/cos + day_sin/cos)
-  5. STL – fit CHỈ trên train, apply seasonal pattern cho val/test
+  4. STL – fit CHỈ trên train, apply seasonal pattern cho val/test
+  5. add_time_features (time_sin/cos + day_sin/cos) → luôn ở cuối
   6. StandardScaler – fit CHỈ trên train
   7. Trả về train/val/test scaled arrays + meta
 """
@@ -22,6 +22,7 @@ PRED_LEN  = 24
 N_COV     = 4          # time_sin, time_cos, day_sin, day_cos
 TARGET    = "OT"
 PERIOD    = 96         # 15-min × 96 = 1 day
+TIME_COLS = ["time_sin", "time_cos", "day_sin", "day_cos"]
 
 
 # ---------- helpers ----------
@@ -35,6 +36,15 @@ def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
     df["day_sin"]  = np.sin(2 * np.pi * idx.dayofweek / 7)
     df["day_cos"]  = np.cos(2 * np.pi * idx.dayofweek / 7)
     return df
+
+
+def _reorder_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep time features as the last 4 columns for TCN covariates."""
+    missing = [c for c in TIME_COLS if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing time features: {missing}")
+    cols = [c for c in df.columns if c not in TIME_COLS] + TIME_COLS
+    return df[cols]
 
 
 def _apply_seasonal(df: pd.DataFrame, pattern: np.ndarray) -> np.ndarray:
@@ -76,12 +86,6 @@ def build_pipeline(csv_path: str):
     test_df  = df.iloc[train_size + val_size:].copy()
 
     # time features
-    for split in [train_df, val_df, test_df]:
-        split = add_time_features(split)
-    train_df = add_time_features(train_df)
-    val_df   = add_time_features(val_df)
-    test_df  = add_time_features(test_df)
-
     # STL – fit only on train
     stl = STL(train_df[TARGET], period=PERIOD)
     res = stl.fit()
@@ -100,6 +104,11 @@ def build_pipeline(csv_path: str):
             split_df[TARGET] - split_df["trend"] - split_df["seasonal"]
         ).values
 
+    # time features (append last)
+    splits = [train_df, val_df, test_df]
+    splits = [add_time_features(split) for split in splits]
+    splits = [_reorder_time_features(split) for split in splits]
+    train_df, val_df, test_df = splits
 
 
     target_index = list(train_df.columns).index(TARGET)
