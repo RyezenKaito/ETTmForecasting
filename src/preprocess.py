@@ -40,6 +40,9 @@ def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def _reorder_time_features(df: pd.DataFrame) -> pd.DataFrame:
     """Keep time features as the last 4 columns for TCN covariates."""
+    missing = [c for c in TIME_COLS if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing time features: {missing}")
     cols = [c for c in df.columns if c not in TIME_COLS] + TIME_COLS
     return df[cols]
 
@@ -102,13 +105,10 @@ def build_pipeline(csv_path: str):
         ).values
 
     # time features (append last)
-    train_df = add_time_features(train_df)
-    val_df   = add_time_features(val_df)
-    test_df  = add_time_features(test_df)
-
-    train_df = _reorder_time_features(train_df)
-    val_df   = _reorder_time_features(val_df)
-    test_df  = _reorder_time_features(test_df)
+    splits = [train_df, val_df, test_df]
+    splits = [add_time_features(split) for split in splits]
+    splits = [_reorder_time_features(split) for split in splits]
+    train_df, val_df, test_df = splits
 
 
     target_index = list(train_df.columns).index(TARGET)
