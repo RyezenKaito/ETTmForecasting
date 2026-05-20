@@ -25,19 +25,41 @@
             Encoder xử lý toàn bộ chuỗi multivariate, Decoder tự động hồi quy từng bước.
           </p>
           <table style="font-size:.85rem;width:100%;border-collapse:collapse">
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Encoder</td><td>LSTM 2 layers, hidden=128</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Decoder</td><td>LSTM 2 layers, hidden=128, input=1</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Dropout</td><td>0.2</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Teacher Forcing</td><td>ratio=0.5 cố định</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Attention</td><td style="color:var(--danger)">❌ Không</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Future Covariates</td><td style="color:var(--danger)">❌ Không</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Optimizer</td><td>AdamW lr=5e-4, wd=1e-3</td></tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:.3rem 0">Encoder</td>
+              <td>LSTM 2 layers, hidden=128</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:.3rem 0">Decoder</td>
+              <td>LSTM 2 layers, hidden=128, input=1</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:.3rem 0">Dropout</td>
+              <td>0.3</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:.3rem 0">Teacher Forcing</td>
+              <td>ratio=0.5 cố định</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:.3rem 0">Attention</td>
+              <td style="color:var(--danger)">❌ Không</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:.3rem 0">Future Covariates</td>
+              <td style="color:var(--danger)">❌ Không</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:.3rem 0">Optimizer</td>
+              <td>AdamW lr=5e-4, wd=1e-3</td>
+            </tr>
           </table>
         </div>
         <div class="card">
           <h3>Sơ đồ kiến trúc</h3>
           <div style="margin-top:1rem; text-align:center;">
-            <img src="{{ url_for('static', filename='lstm_seq2seq_architecture.svg') }}" style="max-width:100%; height:auto; border-radius:8px;" alt="LSTM Architecture">
+            <img src="{{ url_for('static', filename='lstm_seq2seq_architecture.svg') }}"
+              style="max-width:100%; height:auto; border-radius:8px;" alt="LSTM Architecture">
           </div>
         </div>
       </div>
@@ -53,19 +75,41 @@
             Receptive field đủ lớn để bao phủ toàn bộ seq_len=336.
           </p>
           <table style="font-size:.85rem;width:100%;border-collapse:collapse">
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Channels</td><td>[32, 64, 128, 128, 256]</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Kernel size</td><td>7</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Dilations</td><td>[1, 2, 4, 8, 16]</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Receptive Field</td><td style="color:var(--accent3)">RF = 373 ≥ 336 ✓</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Dropout</td><td>0.3</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Future Covariates</td><td style="color:var(--accent3)">✅ time_sin/cos, day_sin/cos</td></tr>
-            <tr><td style="color:var(--text-muted);padding:.3rem 0">Optimizer</td><td>AdamW lr=5e-4, wd=1e-3</td></tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:.3rem 0">Channels</td>
+              <td>[32, 64, 128, 128, 256]</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:.3rem 0">Kernel size</td>
+              <td>7</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:.3rem 0">Dilations</td>
+              <td>[1, 2, 4, 8, 16]</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:.3rem 0">Receptive Field</td>
+              <td style="color:var(--accent3)">RF = 373 ≥ 336 ✓</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:.3rem 0">Dropout</td>
+              <td>0.3</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:.3rem 0">Future Covariates</td>
+              <td style="color:var(--accent3)">✅ time_sin/cos, day_sin/cos</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:.3rem 0">Optimizer</td>
+              <td>AdamW lr=5e-3, wd=1e-3</td>
+            </tr>
           </table>
         </div>
         <div class="card">
           <h3>Sơ đồ kiến trúc</h3>
           <div style="margin-top:1rem; text-align:center;">
-            <img src="{{ url_for('static', filename='tcn_v2_architecture.svg') }}" style="max-width:100%; height:auto; border-radius:8px;" alt="TCN Architecture">
+            <img src="{{ url_for('static', filename='tcn_v2_architecture.svg') }}"
+              style="max-width:100%; height:auto; border-radius:8px;" alt="TCN Architecture">
           </div>
         </div>
       </div>
@@ -73,10 +117,10 @@
       <div class="card fade-in">
         <h3>Receptive Field Calculation</h3>
         <div class="code-block">
-RF = 1 + 2 * (kernel_size - 1) * sum(dilations)
-   = 1 + 2 * (7 - 1) * (1 + 2 + 4 + 8 + 16)
-   = 1 + 12 * 31
-   = <span class="num" style="font-size:1.1rem">373</span>   ✓  (≥ seq_len=<span class="num">336</span>)
+          RF = 1 + 2 * (kernel_size - 1) * sum(dilations)
+          = 1 + 2 * (7 - 1) * (1 + 2 + 4 + 8 + 16)
+          = 1 + 12 * 31
+          = <span class="num" style="font-size:1.1rem">373</span> ✓ (≥ seq_len=<span class="num">336</span>)
         </div>
       </div>
     </div>
@@ -89,17 +133,17 @@ RF = 1 + 2 * (kernel_size - 1) * sum(dilations)
 
 {% block scripts %}
 <script>
-// Override tab activation to change color per tab
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => {
-      b.classList.remove('active','active-tcn','active-attn');
+  // Override tab activation to change color per tab
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.remove('active', 'active-tcn', 'active-attn');
+      });
+      const t = btn.dataset.target;
+      if (t === 'tab-tcn') btn.classList.add('active-tcn');
+      else if (t === 'tab-attention') btn.classList.add('active-attn');
+      else btn.classList.add('active');
     });
-    const t = btn.dataset.target;
-    if (t === 'tab-tcn') btn.classList.add('active-tcn');
-    else if (t === 'tab-attention') btn.classList.add('active-attn');
-    else btn.classList.add('active');
   });
-});
 </script>
 {% endblock %}

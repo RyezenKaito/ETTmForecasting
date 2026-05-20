@@ -1,0 +1,620 @@
+{% extends "base.html" %}
+
+{% block title %}Dự Báo Thực Tế – ETTm1 Demo{% endblock %}
+{% block description %}Dự báo nhiệt độ dầu thực tế sử dụng tập dữ liệu kiểm thử ETTm1_test.csv theo khung giờ và ngày
+được chọn.{% endblock %}
+
+{% block content %}
+<style>
+  /* Custom elegant style for DD/MM/YYYY text input and Calendar Picker */
+  .date-picker-wrapper {
+    position: relative;
+    width: 100%;
+  }
+
+  .date-picker-input {
+    width: 100%;
+    background: var(--glass) !important;
+    border: 1px solid var(--glass-border) !important;
+    color: var(--text) !important;
+    padding: .75rem 2.8rem .75rem 1rem !important;
+    border-radius: var(--radius-sm) !important;
+    font-size: .95rem !important;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .date-picker-input:focus {
+    border-color: var(--accent1) !important;
+    box-shadow: 0 0 10px rgba(76, 155, 232, 0.2);
+  }
+
+  .calendar-icon-btn {
+    position: absolute;
+    right: 0.8rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--accent1);
+    font-size: 1.15rem;
+    cursor: pointer;
+    padding: 0.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s, transform 0.2s;
+  }
+
+  .calendar-icon-btn:hover {
+    color: var(--accent-gold);
+    transform: translateY(-50%) scale(1.1);
+  }
+
+  /* Glassmorphic calendar popup */
+  .calendar-popup {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    z-index: 1000;
+    width: 320px;
+    padding: 1.2rem;
+    background: rgba(18, 18, 35, 0.98) !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6) !important;
+    backdrop-filter: blur(15px);
+    user-select: none;
+    transform-origin: top left;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+
+  .calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 0.6rem;
+  }
+
+  .calendar-title {
+    font-weight: 700;
+    color: var(--accent-gold);
+    font-size: 1rem;
+    text-transform: capitalize;
+  }
+
+  .cal-nav-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    color: var(--text);
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    transition: background 0.2s, border-color 0.2s;
+  }
+
+  .cal-nav-btn:hover:not(:disabled) {
+    background: var(--accent1);
+    color: white;
+    border-color: var(--accent1);
+  }
+
+  .cal-nav-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    text-align: center;
+  }
+
+  .weekday-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 700;
+    padding: 0.4rem 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .cal-day {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    border-radius: 50%;
+    cursor: pointer;
+    color: var(--text);
+    transition: background 0.2s, color 0.2s, transform 0.1s;
+    font-weight: 500;
+  }
+
+  .cal-day:hover:not(.disabled):not(.selected) {
+    background: rgba(255, 255, 255, 0.1);
+    transform: scale(1.08);
+  }
+
+  .cal-day.disabled {
+    color: rgba(255, 255, 255, 0.15);
+    cursor: not-allowed;
+    text-decoration: line-through;
+  }
+
+  .cal-day.selected {
+    background: var(--accent1) !important;
+    color: #fff !important;
+    font-weight: 700;
+    box-shadow: 0 0 10px rgba(76, 155, 232, 0.4);
+  }
+
+  .cal-day.today {
+    border: 1.5px solid var(--accent3);
+  }
+
+  .cal-day.other-month {
+    opacity: 0.25;
+  }
+</style>
+<div class="page">
+
+  <h1 class="page-title fade-in">🔮 Dự Báo Thực Tế</h1>
+  <p class="page-sub fade-in">
+    Thực hiện dự báo 24 bước tiếp theo (6 giờ) trên tập dữ liệu kiểm thử thực tế <strong>ETTm1_test.csv</strong>.
+    Hệ thống sẽ tải dữ liệu lịch sử tương ứng, tiền xử lý và chạy suy diễn thời gian thực để so sánh với nhãn thực tế.
+  </p>
+
+  <!-- Controls Grid -->
+  <div class="grid-2 fade-in" style="margin-bottom:1.6rem">
+    <!-- Form Controls -->
+    <div class="card" style="display:flex; flex-direction:column; justify-content: space-between;">
+      <h3
+        style="color:var(--accent1); margin-top:0; border-bottom:1px solid var(--glass-border); padding-bottom:.6rem; margin-bottom:1.2rem;">
+        📍 Cấu Hình Mốc Thời Gian
+      </h3>
+
+      <form id="forecastForm" onsubmit="return false;" style="display:flex; flex-direction:column; gap:1.2rem;">
+        <!-- Date Picker -->
+        <div>
+          <label for="dateInput"
+            style="display:block; font-size:.85rem; font-weight:600; color:var(--text-muted); margin-bottom:.5rem;">
+            📅 Chọn Ngày Dự Báo:
+          </label>
+          <div class="date-picker-wrapper">
+            <input type="text" id="dateInput" placeholder="DD/MM/YYYY" value="05/02/2018" class="date-picker-input"
+              autocomplete="off">
+            <button type="button" id="calendarToggle" class="calendar-icon-btn">📅</button>
+
+            <!-- Custom Glassmorphic Calendar Popup -->
+            <div id="customCalendar" class="calendar-popup">
+              <div class="calendar-header">
+                <button type="button" id="prevMonthBtn" class="cal-nav-btn">&lt;</button>
+                <div id="calendarMonthYear" class="calendar-title">Tháng 3, 2018</div>
+                <button type="button" id="nextMonthBtn" class="cal-nav-btn">&gt;</button>
+              </div>
+              <div class="calendar-grid">
+                <div class="weekday-label">CN</div>
+                <div class="weekday-label">T2</div>
+                <div class="weekday-label">T3</div>
+                <div class="weekday-label">T4</div>
+                <div class="weekday-label">T5</div>
+                <div class="weekday-label">T6</div>
+                <div class="weekday-label">T7</div>
+              </div>
+              <div id="calendarDaysGrid" class="calendar-grid" style="margin-top: 4px;"></div>
+            </div>
+          </div>
+          <span style="display:block; font-size:.75rem; color:var(--text-muted); margin-top:.4rem;">
+            💡 Chọn ngày từ lịch hoặc nhập trực tiếp (Định dạng: <code>DD/MM/YYYY</code>). Giới hạn:
+            <strong>05/02/2018</strong> đến <strong>26/06/2018</strong>.
+          </span>
+        </div>
+
+        <!-- Time Slot Selector -->
+        <div>
+          <label for="timeSlot"
+            style="display:block; font-size:.85rem; font-weight:600; color:var(--text-muted); margin-bottom:.5rem;">
+            ⏰ Chọn Mốc Khung Giờ (Dự báo 6 giờ):
+          </label>
+          <select id="timeSlot"
+            style="width:100%; padding:.6rem 1rem; background:var(--bg2); border:1px solid var(--glass-border); color:var(--text); font-family:inherit;">
+            <option value="0h - 6h" selected>0h - 6h (Dự báo từ 00:00 → 06:00)</option>
+            <option value="6h - 12h">6h - 12h (Dự báo từ 06:00 → 12:00)</option>
+            <option value="12h - 18h">12h - 18h (Dự báo từ 12:00 → 18:00)</option>
+            <option value="18h - 24h">18h - 24h (Dự báo từ 18:00 → 24:00)</option>
+          </select>
+          <span style="display:block; font-size:.75rem; color:var(--text-muted); margin-top:.4rem;">
+            💡 Mỗi mốc dự báo tương ứng với 24 bước thời gian tiếp theo, mỗi bước cách nhau 15 phút.
+          </span>
+        </div>
+
+        <!-- Submit Button -->
+        <button class="btn btn-primary" id="predictBtn"
+          style="justify-content:center; padding:.8rem; margin-top:.5rem;">
+          🚀 Chạy Dự Báo Thực Tế
+        </button>
+      </form>
+    </div>
+
+    <!-- Quick Instructions -->
+    <div class="card" style="border-left: 3px solid var(--accent3);">
+      <h3 style="color:var(--accent3); margin-top:0;">ℹ️ Cơ Chế Hoạt Động</h3>
+      <ul
+        style="list-style-position:inside; font-size:.88rem; color:var(--text-muted); display:flex; flex-direction:column; gap:.8rem; margin-top:1rem;">
+        <li>
+          <strong style="color:var(--text);">Đọc tệp ETTm1_test.csv:</strong> Tệp dữ liệu kiểm thử thực tế được nạp toàn
+          bộ, tiền xử lý và tách riêng biệt STL.
+        </li>
+        <li>
+          <strong style="color:var(--text);">Tái sử dụng bộ chuẩn hóa:</strong> Dữ liệu test được chuẩn hóa bằng scaler
+          đã fit trên tập train nhằm đảm bảo tính khách quan của kết quả đánh giá.
+        </li>
+        <li>
+          <strong style="color:var(--text);">Truy xuất lịch sử:</strong> Ứng dụng tự động cắt lát <strong>336 bước lịch
+            sử</strong> (3.5 ngày) trước khung giờ đã chọn để làm đầu vào dự đoán.
+        </li>
+        <li>
+          <strong style="color:var(--text);">Tính toán độ lỗi:</strong> Các chỉ số <strong>MSE, RMSE, MAE</strong> sẽ
+          được tính toán trực tiếp đối với khung giờ cụ thể này để so sánh hiệu năng.
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div id="spinner" class="spinner" style="display:none; margin: 3rem auto;"></div>
+
+  <!-- Result Visualizer Container -->
+  <div id="resultContainer" style="display:none;" class="fade-in">
+    <!-- Chart Panel -->
+    <div class="card" style="margin-bottom:1.6rem; text-align:center;">
+      <h3 style="margin-top:0; text-align:left; color:var(--accent-gold);">📊 Biểu Đồ Kết Quả So Sánh 3 Đường</h3>
+      <div id="chartDiv"
+        style="margin-top:1rem; min-height:280px; display:flex; align-items:center; justify-content:center;"></div>
+    </div>
+
+    <!-- Metrics Cards Grid -->
+    <div id="metricsGrid"
+      style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.4rem;"></div>
+  </div>
+
+  <!-- Default Welcome View -->
+  <div id="welcomeView" class="card fade-in"
+    style="text-align:center; padding: 3rem 2rem; border-top: 3px dashed var(--glass-border);">
+    <div style="font-size:3rem; margin-bottom:1rem;">🔮</div>
+    <h3 style="font-size:1.3rem; margin-bottom:.5rem;">Sẵn Sàng Suy Diễn</h3>
+    <p style="color:var(--text-muted); max-width:500px; margin:0 auto;">
+      Vui lòng lựa chọn Ngày và Khung Giờ ở bảng phía trên, sau đó nhấn nút <strong>Chạy Dự Báo Thực Tế</strong> để xem
+      kết quả.
+    </p>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const btn = document.getElementById("predictBtn");
+    const dateInput = document.getElementById("dateInput");
+    const timeSlot = document.getElementById("timeSlot");
+    const spinner = document.getElementById("spinner");
+    const welcomeView = document.getElementById("welcomeView");
+    const resultContainer = document.getElementById("resultContainer");
+    const chartDiv = document.getElementById("chartDiv");
+    const metricsGrid = document.getElementById("metricsGrid");
+
+    // --- Custom Calendar Picker Component ---
+    const calendarPopup = document.getElementById("customCalendar");
+    const prevMonthBtn = document.getElementById("prevMonthBtn");
+    const nextMonthBtn = document.getElementById("nextMonthBtn");
+    const calendarMonthYear = document.getElementById("calendarMonthYear");
+    const calendarDaysGrid = document.getElementById("calendarDaysGrid");
+    const calendarToggle = document.getElementById("calendarToggle");
+
+    // Min and Max range bounds
+    const MIN_DATE = new Date(2018, 1, 5); // 05 Feb 2018
+    const MAX_DATE = new Date(2018, 5, 26); // 26 Jun 2018
+
+    // Init state (defaults to the selected input value 15/03/2018)
+    let currentCalDate = new Date(2018, 2, 15); // Mar 15, 2018
+    let selectedDate = new Date(2018, 2, 15);
+
+    // Helper to format date as DD/MM/YYYY
+    function formatDateToDMY(date) {
+      const d = String(date.getDate()).padStart(2, '0');
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const y = date.getFullYear();
+      return `${d}/${m}/${y}`;
+    }
+
+    // Helper to parse DD/MM/YYYY to Date object
+    function parseDMYToDate(str) {
+      const parts = str.split("/");
+      if (parts.length !== 3) return null;
+      const d = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      const y = parseInt(parts[2], 10);
+      if (isNaN(d) || isNaN(m) || isNaN(y)) return null;
+      return new Date(y, m, d);
+    }
+
+    // Render calendar grid
+    function renderCalendar() {
+      const year = currentCalDate.getFullYear();
+      const month = currentCalDate.getMonth();
+
+      // Month Names in Vietnamese
+      const monthNames = [
+        "Tháng 1", "Tháng 2", "Tháng 3", "Tháng 4", "Tháng 5", "Tháng 6",
+        "Tháng 7", "Tháng 8", "Tháng 9", "Tháng 10", "Tháng 11", "Tháng 12"
+      ];
+      calendarMonthYear.textContent = `${monthNames[month]}, ${year}`;
+
+      // Get first day of month and total days in month
+      const firstDayIdx = new Date(year, month, 1).getDay();
+      const totalDays = new Date(year, month + 1, 0).getDate();
+
+      // Get total days in previous month for padding
+      const prevMonthTotalDays = new Date(year, month, 0).getDate();
+
+      calendarDaysGrid.innerHTML = "";
+
+      // Prev month padding days
+      for (let i = firstDayIdx - 1; i >= 0; i--) {
+        const d = prevMonthTotalDays - i;
+        const cellDate = new Date(year, month - 1, d);
+        createDayCell(d, true, cellDate);
+      }
+
+      // Current month days
+      for (let d = 1; d <= totalDays; d++) {
+        const cellDate = new Date(year, month, d);
+        createDayCell(d, false, cellDate);
+      }
+
+      // Next month padding days to fill grid
+      const totalCells = firstDayIdx + totalDays;
+      const nextMonthPadding = (totalCells % 7 === 0) ? 0 : 7 - (totalCells % 7);
+      for (let d = 1; d <= nextMonthPadding; d++) {
+        const cellDate = new Date(year, month + 1, d);
+        createDayCell(d, true, cellDate);
+      }
+
+      // Disable nav buttons if out of bounds
+      const prevMonthLimit = new Date(year, month - 1, 28);
+      const nextMonthLimit = new Date(year, month + 1, 1);
+      prevMonthBtn.disabled = prevMonthLimit < new Date(2018, 0, 1); // Feb boundary
+      nextMonthBtn.disabled = nextMonthLimit > new Date(2018, 6, 1); // Jun boundary
+    }
+
+    function createDayCell(dayNum, isOtherMonth, cellDate) {
+      const cell = document.createElement("div");
+      cell.textContent = dayNum;
+      cell.classList.add("cal-day");
+
+      if (isOtherMonth) {
+        cell.classList.add("other-month");
+      }
+
+      const compareDate = new Date(cellDate.getFullYear(), cellDate.getMonth(), cellDate.getDate());
+      const minBound = new Date(MIN_DATE.getFullYear(), MIN_DATE.getMonth(), MIN_DATE.getDate());
+      const maxBound = new Date(MAX_DATE.getFullYear(), MAX_DATE.getMonth(), MAX_DATE.getDate());
+
+      if (compareDate < minBound || compareDate > maxBound) {
+        cell.classList.add("disabled");
+      } else {
+        if (selectedDate &&
+          compareDate.getDate() === selectedDate.getDate() &&
+          compareDate.getMonth() === selectedDate.getMonth() &&
+          compareDate.getFullYear() === selectedDate.getFullYear()) {
+          cell.classList.add("selected");
+        }
+
+        const today = new Date();
+        if (compareDate.getDate() === today.getDate() &&
+          compareDate.getMonth() === today.getMonth() &&
+          compareDate.getFullYear() === today.getFullYear()) {
+          cell.classList.add("today");
+        }
+
+        cell.addEventListener("click", () => {
+          selectedDate = cellDate;
+          dateInput.value = formatDateToDMY(cellDate);
+          closeCalendar();
+        });
+      }
+      calendarDaysGrid.appendChild(cell);
+    }
+
+    function toggleCalendar() {
+      if (calendarPopup.style.display === "block") {
+        closeCalendar();
+      } else {
+        openCalendar();
+      }
+    }
+
+    function openCalendar() {
+      const currentVal = dateInput.value;
+      const parsed = parseDMYToDate(currentVal);
+      if (parsed && parsed >= MIN_DATE && parsed <= MAX_DATE) {
+        selectedDate = parsed;
+        currentCalDate = new Date(parsed.getFullYear(), parsed.getMonth(), 1);
+      }
+      renderCalendar();
+      calendarPopup.style.display = "block";
+      calendarPopup.style.opacity = "0";
+      calendarPopup.style.transform = "scale(0.95)";
+      setTimeout(() => {
+        calendarPopup.style.transition = "transform 0.15s ease, opacity 0.15s ease";
+        calendarPopup.style.opacity = "1";
+        calendarPopup.style.transform = "scale(1)";
+      }, 10);
+    }
+
+    function closeCalendar() {
+      calendarPopup.style.opacity = "0";
+      calendarPopup.style.transform = "scale(0.95)";
+      setTimeout(() => {
+        calendarPopup.style.display = "none";
+      }, 150);
+    }
+
+    // Input auto-format typing helper
+    dateInput.addEventListener("input", (e) => {
+      let val = e.target.value.replace(/\D/g, "");
+      if (val.length > 2) {
+        val = val.slice(0, 2) + "/" + val.slice(2);
+      }
+      if (val.length > 5) {
+        val = val.slice(0, 5) + "/" + val.slice(5, 9);
+      }
+      e.target.value = val;
+
+      if (val.length === 10) {
+        const parsed = parseDMYToDate(val);
+        if (parsed && parsed >= MIN_DATE && parsed <= MAX_DATE) {
+          selectedDate = parsed;
+          currentCalDate = new Date(parsed.getFullYear(), parsed.getMonth(), 1);
+          renderCalendar();
+        }
+      }
+    });
+
+    calendarToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleCalendar();
+    });
+    dateInput.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openCalendar();
+    });
+
+    prevMonthBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      currentCalDate.setMonth(currentCalDate.getMonth() - 1);
+      renderCalendar();
+    });
+
+    nextMonthBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      currentCalDate.setMonth(currentCalDate.getMonth() + 1);
+      renderCalendar();
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!calendarPopup.contains(e.target) && e.target !== dateInput && e.target !== calendarToggle) {
+        closeCalendar();
+      }
+    });
+
+    async function runActualForecast() {
+      const dateVal = dateInput.value.trim();
+      const slotVal = timeSlot.value;
+
+      if (!dateVal) {
+        alert("Vui lòng chọn ngày dự báo hợp lệ.");
+        return;
+      }
+
+      const parts = dateVal.split("/");
+      if (parts.length !== 3) {
+        alert("Định dạng ngày không hợp lệ. Vui lòng nhập hoặc chọn theo định dạng DD/MM/YYYY (ví dụ: 15/03/2018).");
+        return;
+      }
+      const formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`; // YYYY-MM-DD
+
+      // Reset views
+      welcomeView.style.display = "none";
+      resultContainer.style.display = "none";
+      chartDiv.innerHTML = "";
+      metricsGrid.innerHTML = "";
+      spinner.style.display = "block";
+      btn.disabled = true;
+
+      try {
+        const res = await fetch("/api/predict_actual", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date: formattedDate, time_slot: slotVal })
+        });
+        const data = await res.json();
+
+        if (!res.ok || data.error) {
+          alert(data.error || "Đã xảy ra lỗi không xác định.");
+          welcomeView.style.display = "block";
+          return;
+        }
+
+        // Render Chart
+        const img = document.createElement("img");
+        img.src = "data:image/png;base64," + data.chart;
+        img.style.maxWidth = "100%";
+        img.style.borderRadius = "12px";
+        img.style.boxShadow = "0 8px 24px rgba(0,0,0,0.3)";
+        chartDiv.appendChild(img);
+
+        // Render Metrics Grid
+        let gridHtml = "";
+        for (const [modelKey, met] of Object.entries(data.metrics)) {
+          let color = modelKey === "seq2seq" ? "var(--accent1)" : "var(--accent2)";
+          let name = modelKey === "seq2seq" ? "LSTM Seq2Seq" : "TCN_v2";
+
+          gridHtml += `
+                <div class="card fade-in" style="border-top: 3px solid ${color};">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                        <h3 style="color:${color}; margin:0; font-size:1.15rem;">${name}</h3>
+                        <span class="badge" style="background:${color}20; color:${color}; font-size:.72rem;">Active</span>
+                    </div>
+                    <p style="color:var(--text-muted); font-size:.82rem; margin-bottom:1rem;">
+                        Chỉ số đánh giá độ lỗi của mô hình so với thực tế vào khung giờ được chọn:
+                    </p>
+                    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:.8rem;">
+                        <div style="background:rgba(255,255,255,.02); border:1px solid var(--glass-border); padding:.6rem; border-radius:var(--radius-sm); text-align:center;">
+                            <span style="display:block; font-size:.7rem; color:var(--text-muted);">MSE</span>
+                            <span style="font-size:1.1rem; font-weight:700; color:${color};">${met.MSE.toFixed(4)}</span>
+                        </div>
+                        <div style="background:rgba(255,255,255,.02); border:1px solid var(--glass-border); padding:.6rem; border-radius:var(--radius-sm); text-align:center;">
+                            <span style="display:block; font-size:.7rem; color:var(--text-muted);">RMSE</span>
+                            <span style="font-size:1.1rem; font-weight:700; color:var(--text);">${met.RMSE.toFixed(4)}</span>
+                        </div>
+                        <div style="background:rgba(255,255,255,.02); border:1px solid var(--glass-border); padding:.6rem; border-radius:var(--radius-sm); text-align:center;">
+                            <span style="display:block; font-size:.7rem; color:var(--text-muted);">MAE</span>
+                            <span style="font-size:1.1rem; font-weight:700; color:var(--text);">${met.MAE.toFixed(4)}</span>
+                        </div>
+                    </div>
+                </div>
+                `;
+        }
+        metricsGrid.innerHTML = gridHtml;
+
+        // Show results
+        resultContainer.style.display = "block";
+
+      } catch (err) {
+        console.error(err);
+        alert("Lỗi kết nối tới máy chủ hoặc xử lý dữ liệu bị gián đoạn.");
+        welcomeView.style.display = "block";
+      } finally {
+        spinner.style.display = "none";
+        btn.disabled = false;
+      }
+    }
+
+    btn.addEventListener("click", runActualForecast);
+  });
+</script>
+{% endblock %}

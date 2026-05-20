@@ -100,3 +100,35 @@ def build_pipeline(csv_path: str):
         scaler, target_index, n_features,
         train_df
     )
+
+
+def build_test_pipeline(csv_path: str, scaler):
+    """
+    Tiền xử lý tập dữ liệu test thực tế (không chia tách)
+    sử dụng bộ chuẩn hóa scaler đã khớp của tập huấn luyện.
+    """
+    # --- Load ---
+    df = pd.read_csv(csv_path)
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.set_index("date")
+
+    # --- Drop MUFL, MULL ---
+    for col in ["MUFL", "MULL"]:
+        if col in df.columns:
+            df.drop(col, axis=1, inplace=True)
+
+    # --- STL on FULL df ---
+    stl = STL(df[TARGET], period=PERIOD)
+    res = stl.fit()
+    df["trend"]    = res.trend
+    df["seasonal"] = res.seasonal
+    df["residual"] = res.resid
+
+    # --- Add time features ---
+    add_time_features(df)
+
+    # --- Scale ---
+    test_scaled = scaler.transform(df.values)
+
+    return test_scaled, df
+

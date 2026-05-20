@@ -21,10 +21,10 @@
   <div class="tabs-container">
     <div class="tabs">
       {% for key, data in report.items() %}
-      <button class="tab-btn {% if loop.first %}active{% endif %}"
-              data-target="wt-{{ key }}">
+      <button class="tab-btn {% if loop.first %}active{% endif %}" data-target="wt-{{ key }}">
         {{ data.label }}
-        <span class="badge badge-gray" style="margin-left:.3rem">{{ "{:,}".format(data.total) }} params</span>
+        <span class="badge badge-gray" style="margin-left:.3rem; color: #fff;">{{ "{:,}".format(data.total) }}
+          params</span>
       </button>
       {% endfor %}
     </div>
@@ -62,7 +62,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
           <h3>Layer Details</h3>
           <button class="btn btn-ghost weight-toggle" data-target="tbody-{{ key }}"
-                  style="font-size:.82rem;padding:.3rem .9rem">▼ Expand</button>
+            style="font-size:.82rem;padding:.3rem .9rem">▼ Expand</button>
         </div>
         <table class="weight-table">
           <thead>

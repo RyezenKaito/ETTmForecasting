@@ -6,17 +6,19 @@ Run:  python app.py
 import os
 import json
 import numpy as np
+import pandas as pd
 import torch
 from flask import Flask, render_template, request, jsonify
 
+
 # ── local modules ─────────────────────────────────────────────────────────────
-from src.preprocess import build_pipeline, SEQ_LEN, LABEL_LEN, PRED_LEN, N_COV
+from src.preprocess import build_pipeline, build_test_pipeline, SEQ_LEN, LABEL_LEN, PRED_LEN, N_COV
 from src.models import MODEL_CONFIGS
 from src.metrics import inverse_target, calc_metrics
 from src.inference import (TimeSeriesDataset, load_model,
                             evaluate_model, predict_sample)
 from src.plots import (plot_learning_curves, plot_predictions,
-                       plot_bar_comparison, plot_multi_prediction)
+                       plot_bar_comparison, plot_multi_prediction, plot_actual_prediction)
 from torch.utils.data import DataLoader
 
 # ── paths ─────────────────────────────────────────────────────────────────────
@@ -37,10 +39,13 @@ _TEST_PREDS = {}     # {key: np.ndarray (N, pred_len)}
 _TEST_TRUES = {}
 _METRICS    = {}     # {key: {MSE, RMSE, MAE, sMAPE%}}
 _LC_DATA    = {}     # learning-curve stub
+_TEST_ACTUAL_SCALED = None  # scaled array for actual test set
+_TEST_ACTUAL_DF     = None  # raw df for actual test set
+
 
 
 def _init():
-    global _PIPELINE, _MODELS, _TEST_DS, _TEST_PREDS, _TEST_TRUES, _METRICS, _LC_DATA
+    global _PIPELINE, _MODELS, _TEST_DS, _TEST_PREDS, _TEST_TRUES, _METRICS, _LC_DATA, _TEST_ACTUAL_SCALED, _TEST_ACTUAL_DF
 
     if _PIPELINE is not None:
         return  # already initialised
@@ -49,6 +54,15 @@ def _init():
     (train_sc, val_sc, test_sc,
      scaler, ti, nf, train_df) = build_pipeline(DATA_PATH)
     _PIPELINE = (train_sc, val_sc, test_sc, scaler, ti, nf, train_df)
+
+    print("[init] Loading ETTm1_test.csv for actual forecasting…")
+    test_actual_path = os.path.join(BASE_DIR, "data", "ETTm1_test.csv")
+    if os.path.exists(test_actual_path):
+        _TEST_ACTUAL_SCALED, _TEST_ACTUAL_DF = build_test_pipeline(test_actual_path, scaler)
+        print(f"[init] Loaded ETTm1_test.csv with shape {_TEST_ACTUAL_DF.shape}")
+    else:
+        print(f"[init] WARNING: ETTm1_test.csv not found at {test_actual_path}")
+
 
     print(f"[init] Columns: {list(train_df.columns)}")
     print(f"[init] target_index={ti}, n_features={nf}")
@@ -236,7 +250,109 @@ def api_predict():
     })
 
 
+@app.route("/predict_actual")
+def predict_actual_page():
+    _init()
+    return render_template("predict_actual.html")
+
+
+@app.route("/api/predict_actual", methods=["POST"])
+def api_predict_actual():
+    _init()
+    
+    if _TEST_ACTUAL_DF is None or _TEST_ACTUAL_SCALED is None:
+        return jsonify({"error": "Dữ liệu kiểm thử ETTm1_test.csv chưa được tải."}), 500
+        
+    body = request.get_json(force=True)
+    date_str = body.get("date", "").strip()
+    time_slot = body.get("time_slot", "").strip()
+    
+    if not date_str or not time_slot:
+        return jsonify({"error": "Vui lòng cung cấp đầy đủ ngày và mốc thời gian."}), 400
+        
+    # Ánh xạ mốc thời gian sang giờ bắt đầu
+    slot_hours = {
+        "0h - 6h": 0,
+        "6h - 12h": 6,
+        "12h - 18h": 12,
+        "18h - 24h": 18
+    }
+    
+    if time_slot not in slot_hours:
+        return jsonify({"error": f"Mốc thời gian '{time_slot}' không hợp lệ."}), 400
+        
+    hour = slot_hours[time_slot]
+    
+    try:
+        # Tạo chuỗi datetime mục tiêu
+        target_timestamp_str = f"{date_str} {hour:02d}:00:00"
+        target_dt = pd.to_datetime(target_timestamp_str)
+    except Exception as e:
+        return jsonify({"error": f"Định dạng ngày không hợp lệ. Vui lòng nhập YYYY-MM-DD. Chi tiết: {str(e)}"}), 400
+
+    # Tìm dòng tương ứng trong DataFrame
+    matching_indices = _TEST_ACTUAL_DF.index.get_indexer([target_dt])
+    if len(matching_indices) == 0 or matching_indices[0] == -1:
+        return jsonify({"error": f"Không tìm thấy thời điểm {target_timestamp_str} trong dữ liệu thực tế."}), 404
+        
+    idx = matching_indices[0]
+    
+    # Kiểm tra xem có đủ dữ liệu lịch sử không
+    if idx < SEQ_LEN:
+        return jsonify({
+            "error": f"Không đủ dữ liệu lịch sử trước thời điểm {target_timestamp_str} để dự báo. "
+                     f"Vui lòng chọn ngày từ 2018-02-05 trở đi."
+        }), 400
+        
+    # Kiểm tra xem có đủ dữ liệu tương lai (Ground Truth) để đánh giá không
+    if idx + PRED_LEN > len(_TEST_ACTUAL_DF):
+        return jsonify({
+            "error": f"Mốc thời gian dự báo vượt quá giới hạn dữ liệu thực tế hiện có. "
+                     f"Vui lòng chọn mốc thời gian sớm hơn."
+        }), 400
+        
+    # Tiến hành dự báo
+    _, _, _, scaler, ti, _, _ = _PIPELINE
+    
+    all_preds = {}
+    all_metrics = {}
+    model_labels = {}
+    
+    true_vals = None
+    
+    # Lấy các mốc thời gian cho 24 bước
+    target_dates = _TEST_ACTUAL_DF.index[idx : idx + PRED_LEN]
+    
+    for key, model in _MODELS.items():
+        # Gọi hàm dự báo cho mẫu cụ thể. sample_idx chính là (idx - SEQ_LEN)
+        pred, true = predict_sample(model, key, _TEST_ACTUAL_SCALED, idx - SEQ_LEN,
+                                    PRED_LEN, ti, scaler, device, SEQ_LEN, LABEL_LEN)
+        all_preds[key] = pred
+        all_metrics[key] = calc_metrics(pred, true)
+        model_labels[key] = MODEL_CONFIGS[key]["label"]
+        if true_vals is None:
+            true_vals = true
+
+    if not all_preds:
+        return jsonify({"error": "Không có mô hình nào khả dụng."}), 400
+
+    # Vẽ biểu đồ 3 đường với mốc thời gian thực tế
+    chart = plot_actual_prediction(all_preds, true_vals, target_dates, model_labels)
+
+    # Convert arrays sang list để chuyển thành JSON
+    preds_json = {k: v.tolist() for k, v in all_preds.items()}
+
+    return jsonify({
+        "preds":   preds_json,
+        "true":    true_vals.tolist(),
+        "metrics": all_metrics,
+        "chart":   chart,
+        "target_time": target_dt.strftime("%d/%m/%Y %H:%M"),
+    })
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5500, debug=True)
+

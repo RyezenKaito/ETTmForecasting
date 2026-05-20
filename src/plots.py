@@ -176,3 +176,41 @@ def plot_multi_prediction(preds: dict, true: np.ndarray,
               labelcolor=PALETTE["text"], facecolor=PALETTE["panel"])
     plt.tight_layout()
     return _fig_to_b64(fig)
+
+
+def plot_actual_prediction(preds: dict, true: np.ndarray, dates, model_labels: dict) -> str:
+    """
+    Vẽ biểu đồ 3 đường so sánh: Thực tế (Ground Truth), LSTM Seq2Seq và TCN_v2.
+    Trục X sẽ là mốc thời gian thực tế định dạng %H:%M.
+    """
+    fig, ax = plt.subplots(figsize=(10, 5.2))
+    _apply_dark_style(fig, [ax])
+    
+    # Chuyển đổi dates thành định dạng chuỗi HH:MM
+    x_labels = [d.strftime("%H:%M") for d in dates]
+    steps = np.arange(len(true))
+    
+    ax.plot(steps, true, color=PALETTE["true"], linewidth=2.8, marker="o",
+            markersize=5, label="Thực tế (Ground Truth)")
+    
+    for key, pred in preds.items():
+        marker = "s" if key == "seq2seq" else "^"
+        ax.plot(steps, pred, color=PALETTE[key], linewidth=2.2, marker=marker,
+                markersize=6, linestyle="--", label=f"Dự báo {model_labels[key]}")
+
+    # Đặt nhãn trục X là mốc thời gian
+    ax.set_xticks(steps)
+    ax.set_xticklabels(x_labels, rotation=45, ha="right", fontsize=9)
+
+    ax.set_xlabel("Thời gian thực tế (Khoảng cách 15 phút)", fontsize=10, fontweight="bold", labelpad=8)
+    ax.set_ylabel("OT (°C)", fontsize=10, fontweight="bold")
+    
+    start_time_str = dates[0].strftime("%d/%m/%Y %H:%M")
+    ax.set_title(f"So sánh thực tế & dự báo 24 bước - Bắt đầu từ {start_time_str}", 
+                 fontsize=12, fontweight="bold", pad=12)
+                 
+    ax.legend(fontsize=10, framealpha=0.4,
+              labelcolor=PALETTE["text"], facecolor=PALETTE["panel"])
+    plt.tight_layout()
+    return _fig_to_b64(fig)
+

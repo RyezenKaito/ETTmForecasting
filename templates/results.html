@@ -99,9 +99,8 @@
         <tr>
           <td style="color:var(--text-muted);padding:.3rem 0">Epochs run</td>
           <td style="font-weight:600">
-            {% if key == 'seq2seq' %}30 (early stop)
-            {% elif key == 'tcn' %}100 (early stop)
-            {% else %}7 (early stop ep2)
+            {% if key == 'seq2seq' %}15 (early stop)
+            {% elif key == 'tcn' %}36 (early stop)
             {% endif %}
           </td>
         </tr>
@@ -110,7 +109,7 @@
           <td style="font-weight:600;color:var(--accent-gold)">
             <!-- {{ best_ep }} -->
             {% if key == 'seq2seq' %}5
-            {% elif key == 'tcn' %}78
+            {% elif key == 'tcn' %}26
             {% endif %}
           </td>
         </tr>
@@ -119,7 +118,7 @@
           <td style="font-weight:600;color:{{color}}">
             <!-- {{ "%.4f"|format(best_val) }} -->
             {% if key == 'seq2seq' %}0.010077
-            {% elif key == 'tcn' %}0.008629
+            {% elif key == 'tcn' %}0.007552
             {% endif %}
           </td>
         </tr>
